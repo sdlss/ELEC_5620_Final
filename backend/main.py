@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from typing import List, Optional
 import os
 import uuid
+from .ai_agent import analyze_issue
 
 app = FastAPI(title="ELEC_5620_FINAL Backend")
 
@@ -71,3 +72,12 @@ async def create_case(
 				f.write(content)
 
 	return JSONResponse({"case_id": case_id, "status": "created"})
+
+
+@app.post("/analyze")
+async def analyze(issue_description: str = Form("")):
+	"""直接对问题描述进行最小分析，返回文本建议。"""
+	if not issue_description.strip():
+		return JSONResponse({"error": "issue_description is required"}, status_code=400)
+	result = analyze_issue(issue_description)
+	return JSONResponse(result)
