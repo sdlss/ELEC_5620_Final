@@ -1,17 +1,42 @@
 // upload.tsx
-// 说明：上传页面，包含收据文件、商品图片与问题描述三个输入项。
-// 作用：
-// - 选择收据（可多文件，图片/PDF）。
-// - 选择商品图片（可多文件，image/*）。
-// - 填写问题描述。
-// - 通过 FormData 提交到后端 /cases 接口。
-// 注意：为保持轻量，本示例仅包含最小可运行的前端逻辑骨架。
+// Description: Upload page with three inputs: receipt files, product images, and issue description.
+// Purpose:
+// - Select receipt files (multiple, images/PDF).
+// - Select product images (multiple, image/*).
+// - Fill in the issue description.
+// - Submit to backend /cases via FormData.
+// Note: Minimal, lightweight example focusing on basic functionality.
 
 // @ts-nocheck
-import React, { useState } from 'react';
-// 提示：实际项目建议用路由跳转至结果页，这里仅演示提交与基本反馈
-// import { useRouter } from 'next/router'
-import { uploadCase } from '../../utils/api';
+import React, { useRef, useState } from 'react';
+import { useRouter } from 'next/router'
+import { uploadCase, analyzeIssue } from '../utils/api';
+
+const card: React.CSSProperties = {
+	background: '#fff',
+	border: '1px solid #e5e7eb',
+	borderRadius: 12,
+	padding: 20,
+	boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+};
+
+const dropzoneBase: React.CSSProperties = {
+	border: '2px dashed #cbd5e1',
+	borderRadius: 12,
+	padding: 20,
+	background: '#fafafa',
+	cursor: 'pointer'
+};
+
+const primaryBtn: React.CSSProperties = {
+	background: '#111827', color: '#fff', padding: '10px 16px', borderRadius: 8,
+	border: '1px solid #111827', cursor: 'pointer', fontWeight: 600
+};
+
+const secondaryBtn: React.CSSProperties = {
+	background: '#f3f4f6', color: '#111827', padding: '10px 16px', borderRadius: 8,
+	border: '1px solid #e5e7eb', cursor: 'pointer', fontWeight: 600
+};
 
 const UploadPage: React.FC = () => {
 	const [receiptFiles, setReceiptFiles] = useState<FileList | null>(null);
@@ -19,6 +44,16 @@ const UploadPage: React.FC = () => {
 	const [issueDescription, setIssueDescription] = useState<string>('');
 	const [submitting, setSubmitting] = useState(false);
 	const [message, setMessage] = useState<string>('');
+	const router = useRouter();
+	const receiptInputRef = useRef<HTMLInputElement>(null);
+	const imageInputRef = useRef<HTMLInputElement>(null);
+
+	const summarize = (fl: FileList | null) => {
+		if (!fl || fl.length === 0) return 'No files selected';
+		const names = Array.from(fl).map(f => f.name);
+		if (names.length <= 2) return names.join(', ');
+		return `${names.slice(0,2).join(', ')} +${names.length - 2} more`;
+	};
 
 	const onSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
 		e.preventDefault();
@@ -34,59 +69,129 @@ const UploadPage: React.FC = () => {
 			}
 			fd.append('issue_description', issueDescription || '');
 
-			const res = await uploadCase(fd);
-			if (res?.case_id) {
-				setMessage(`提交成功，case_id: ${res.case_id}`);
-				// TODO: 可跳转到 /result?case_id=xxx
-			} else {
-				setMessage('提交完成，但未返回 case_id');
+			// 1) Create the case (saves files and description)
+			const created = await uploadCase(fd);
+			if (!created?.case_id) {
+				setMessage('Submission finished but no case_id returned');
+				return;
 			}
+			setMessage(`Submitted successfully, case_id: ${created.case_id}. Running analysis...`);
+
+			// 2) Call analysis directly using the same description
+			const analysis = await analyzeIssue(issueDescription || '');
+			// Persist result locally for the result page
+			const entry = { case_id: created.case_id, analysis, created_at: new Date().toISOString(), status: 'Analyzed' };
+			localStorage.setItem('lastAnalysis', JSON.stringify(entry));
+			// Append to history list for Quick View
+			try {
+				const raw = localStorage.getItem('analysisHistory');
+				const list = raw ? JSON.parse(raw) : [];
+				list.unshift(entry);
+				// keep only recent 50
+				while (list.length > 50) list.pop();
+				localStorage.setItem('analysisHistory', JSON.stringify(list));
+			} catch {}
+			// Navigate to result page
+			router.push('/result');
 		} catch (err: any) {
-			setMessage(err?.message || '提交失败');
+			setMessage(err?.message || 'Submission failed');
 		} finally {
 			setSubmitting(false);
 		}
 	};
 
 	return (
-		<div style={{ maxWidth: 720, margin: '24px auto', padding: 16 }}>
-			<h1>上传收据与问题信息</h1>
-			<form onSubmit={onSubmit}>
-				<div style={{ marginBottom: 12 }}>
-					<label>收据文件（可多选，图片/PDF）：</label><br />
-					<input
-						type="file"
-						accept="image/*,application/pdf"
-						multiple
-						onChange={(e) => setReceiptFiles(e.target.files)}
-					/>
+		<div style={{ minHeight: '100vh', background: '#f7f7f9' }}>
+			<div style={{ maxWidth: 860, margin: '0 auto', padding: '24px 16px' }}>
+				<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+					<div>
+						<h1 style={{ margin: 0 }}>Upload Receipts and Issue Details</h1>
+						<p style={{ color: '#6b7280', margin: '4px 0 0' }}>Select files and describe your issue. You can drag and drop files into the area.</p>
+					</div>
 				</div>
-				<div style={{ marginBottom: 12 }}>
-					<label>商品图片（可多选，仅图片）：</label><br />
-					<input
-						type="file"
-						accept="image/*"
-						multiple
-						onChange={(e) => setProductImages(e.target.files)}
-					/>
-				</div>
-				<div style={{ marginBottom: 12 }}>
-					<label>问题描述：</label><br />
-					<textarea
-						rows={6}
-						style={{ width: '100%' }}
-						placeholder="请简要描述遇到的问题、时间、与商家沟通情况等"
-						value={issueDescription}
-						onChange={(e) => setIssueDescription(e.target.value)}
-					/>
-				</div>
-				<button type="submit" disabled={submitting}>
-					{submitting ? '提交中…' : '提交'}
-				</button>
-			</form>
-			{message && (
-				<p style={{ marginTop: 12 }}>{message}</p>
-			)}
+
+				<form onSubmit={onSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+					<div style={card}>
+						<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Receipt files</div>
+						<div
+							style={dropzoneBase}
+							onClick={() => receiptInputRef.current?.click()}
+							onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+							onDrop={(e) => { e.preventDefault(); setReceiptFiles(e.dataTransfer.files); }}
+						>
+							<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+								<div>
+									<div style={{ fontWeight: 600 }}>Click to choose files or drag and drop</div>
+									<div style={{ color: '#6b7280', fontSize: 12 }}>Accepted: images/PDF, multiple</div>
+								</div>
+								<button type="button" style={secondaryBtn} onClick={(e) => { e.preventDefault(); receiptInputRef.current?.click(); }}>Browse</button>
+							</div>
+							<div style={{ marginTop: 8, color: '#111827' }}>{summarize(receiptFiles)}</div>
+							<input
+								ref={receiptInputRef}
+								type="file"
+								accept="image/*,application/pdf"
+								multiple
+								style={{ display: 'none' }}
+								onChange={(e) => setReceiptFiles(e.target.files)}
+							/>
+						</div>
+						<div style={{ marginTop: 8 }}>
+							<button type="button" style={secondaryBtn} onClick={() => setReceiptFiles(null)}>Clear receipts</button>
+						</div>
+					</div>
+
+					<div style={card}>
+						<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Product images</div>
+						<div
+							style={dropzoneBase}
+							onClick={() => imageInputRef.current?.click()}
+							onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+							onDrop={(e) => { e.preventDefault(); setProductImages(e.dataTransfer.files); }}
+						>
+							<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+								<div>
+									<div style={{ fontWeight: 600 }}>Click to choose files or drag and drop</div>
+									<div style={{ color: '#6b7280', fontSize: 12 }}>Accepted: images, multiple</div>
+								</div>
+								<button type="button" style={secondaryBtn} onClick={(e) => { e.preventDefault(); imageInputRef.current?.click(); }}>Browse</button>
+							</div>
+							<div style={{ marginTop: 8, color: '#111827' }}>{summarize(productImages)}</div>
+							<input
+								ref={imageInputRef}
+								type="file"
+								accept="image/*"
+								multiple
+								style={{ display: 'none' }}
+								onChange={(e) => setProductImages(e.target.files)}
+							/>
+						</div>
+						<div style={{ marginTop: 8 }}>
+							<button type="button" style={secondaryBtn} onClick={() => setProductImages(null)}>Clear images</button>
+						</div>
+					</div>
+
+					<div style={card}>
+						<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Issue description</div>
+						<textarea
+							rows={6}
+							style={{ width: '100%', marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}
+							placeholder="Briefly describe the issue, time, and your communication with the seller"
+							value={issueDescription}
+							onChange={(e) => setIssueDescription(e.target.value)}
+						/>
+						<div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+							<button type="submit" disabled={submitting} style={primaryBtn}>
+								{submitting ? 'Submitting…' : 'Submit'}
+							</button>
+							<button type="button" style={secondaryBtn} onClick={() => { setReceiptFiles(null); setProductImages(null); setIssueDescription(''); setMessage(''); }}>Reset</button>
+						</div>
+						{message && (
+							<p style={{ marginTop: 12 }}>{message}</p>
+						)}
+					</div>
+				</form>
+			</div>
 		</div>
 	);
 };

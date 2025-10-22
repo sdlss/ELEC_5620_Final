@@ -55,7 +55,6 @@ start.bat                       # Windows 一键启动后端（可选）
    D:\anaconda\Scripts\conda.exe run -p d:\Desktop\ELEC_5620_Final\.conda --no-capture-output python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 
 5) 用法示例
-- 健康检查：浏览器打开 http://localhost:8000/health
 - 创建工单：`POST /cases` (multipart/form-data)
 - 最小分析：`POST /analyze` 表单字段 `issue_description`
 
@@ -68,3 +67,237 @@ start.bat                       # Windows 一键启动后端（可选）
 ## 安全
 - 不要将 `.env` 提交到版本库。
 - 若 Key 泄露，请在 OpenAI 控制台立即旋转重置。
+
+---
+
+## 近期更新（2025-10-22）
+
+- 首页重构为 User Dashboard：
+   - 顶部标题与说明，快速入口 “Create New Case”。
+   - 快速统计卡片：Latest Case、Status（原 Model 改为 Status）。
+   - 右侧 “Quick View”：展示最近多个 case（来自本地历史），可一键打开查看详情。
+- 上传页 UI 美化：
+   - 自定义文件选择（隐藏原生 input），支持拖拽上传、文件摘要展示、清空按钮。
+   - 统一按钮样式，表单布局更清晰。
+- 结果页展示结构化信息（analysis/key_points/steps）。
+- 前端移除了 health check 按钮与相关代码（后端 `/health` 接口仍可用于手动排查）。
+- 新增前端最小运行配置：`frontend/package.json`、`frontend/next.config.mjs`。
+- 本地数据持久化：
+   - `localStorage.lastAnalysis` 最近一次分析。
+   - `localStorage.analysisHistory` 历史列表（最多 50 条）。
+   - 历史项包含：`case_id`、`analysis`、`created_at`、`status`（当前为前端标记的 "Analyzed"）。
+
+## 前端运行（Next.js）
+
+1) 安装依赖
+
+```cmd
+cd D:\Desktop\ELEC_5620_Final\frontend
+npm install
+```
+
+2) 配置后端地址（可选）
+
+在 `frontend/.env.local` 写入：
+
+```
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+```
+
+3) 启动开发服务器
+
+```cmd
+npm run dev
+```
+
+打开 http://localhost:3000 访问前端。
+
+## 使用流程（端到端）
+
+1) 首页（User Dashboard）：
+    - 查看最近一次分析与历史列表（Quick View）。
+    - 点击历史条目可直达结果页。
+2) 上传页（Upload）：
+    - 选择收据/商品图片并填写问题描述，提交后：
+       - 前端调用 `POST /cases` 创建工单（返回 `case_id`）。
+       - 前端调用 `POST /analyze` 请求 AI 分析。
+       - 结果写入 localStorage 的 `lastAnalysis` 与 `analysisHistory`，再跳转 Result 页面。
+3) 结果页（Result）：展示模型原始输出与结构化字段（key_points、steps）。
+
+备注：仪表盘 “Status” 当前为前端标记的进度（分析完成后记为 "Analyzed"）。如需精准进度，请扩展后端持久化与状态流转。
+
+## API 契约补充
+
+- `POST /cases`（multipart/form-data）
+   - 入参：`receipt_files[]`、`product_images[]`、`issue_description`
+   - 出参：`{ case_id: string, status: "created" }`
+
+- `POST /analyze`（application/x-www-form-urlencoded）
+   - 入参：`issue_description: string`
+   - 出参：
+      ```json
+      {
+         "model": "gpt-5-nano",
+         "issue_description": "...",
+         "analysis": "...",
+         "key_points": ["..."],
+         "steps": ["..."]
+      }
+      ```
+
+   ---
+
+   ## English Version
+
+   ### Overview
+
+   This is a minimal, working skeleton of an e-commerce after-sales assistant. The backend uses the public OpenAI API (no Azure dependency). It supports a small workflow to create a case and run an issue analysis, and ships with a simple Next.js frontend.
+
+   Backend endpoints:
+   - GET /health — Health check (kept for manual diagnostics; the UI doesn’t call it anymore)
+   - POST /cases — Upload receipts/images and issue description, returns case_id
+   - POST /analyze — Minimal analysis using OpenAI Chat Completions
+
+   Frontend pages:
+   - index.tsx — User Dashboard: latest analysis, Status card (Model → Status), and a Quick View history list
+   - upload.tsx — Upload page with custom file picker (buttons + drag-and-drop), file summary, unified buttons
+   - result.tsx — Result page rendering raw model output and structured fields (key_points, steps)
+
+   ### What’s New (2025-10-22)
+
+   - Dashboard redesign (User Dashboard)
+      - Header with quick entry “Create New Case”
+      - Quick stats: Latest Case, Status (replacing Model)
+      - “Quick View” shows multiple recent cases from local history; click to open details
+   - Upload page UI refresh
+      - Custom file picker (hides native input), drag-and-drop, file summary, clear buttons
+      - Consistent button styling and cleaner layout
+   - Result page renders structured info (analysis/key_points/steps)
+   - Removed frontend health-check button; backend /health remains
+   - Minimal frontend setup added: frontend/package.json, frontend/next.config.mjs
+   - Local persistence
+      - localStorage.lastAnalysis — the most recent analysis
+      - localStorage.analysisHistory — up to 50 entries (case_id, analysis, created_at, status)
+
+   ### Project Structure
+
+   ```
+   ELEC_5620_Final/
+   ├── frontend/
+   │   ├── package.json
+   │   ├── next.config.mjs
+   │   ├── public/
+   │   └── src/
+   │       ├── pages/
+   │       │   ├── index.tsx
+   │       │   ├── upload.tsx
+   │       │   └── result.tsx
+   │       └── utils/
+   │           └── api.ts
+   └── backend/
+         ├── main.py        # /health, /cases, /analyze
+         ├── ai_agent.py    # OpenAI API call, returns structured JSON when possible
+         ├── config.py      # OPENAI_API_KEY / OPENAI_MODEL / optional OPENAI_BASE_URL
+         ├── openai_test.py # connectivity test
+         ├── prompts/
+         ├── uploads/
+         ├── requirements.txt
+         └── README.md
+
+   start.bat              # Windows helper to start backend (dev)
+   ```
+
+   ### Getting Started (Windows)
+
+   Backend (FastAPI)
+   1) Install deps
+
+   ```cmd
+   cd D:\Desktop\ELEC_5620_Final
+   pip install -r backend\requirements.txt
+   ```
+
+   2) Create .env in repo root
+
+   ```
+   OPENAI_API_KEY=sk-xxxx
+   # Optional:
+   # OPENAI_MODEL=gpt-4o-mini
+   # OPENAI_BASE_URL=https://api.openai.com/v1
+   ```
+
+   3) Start backend (dev)
+
+   ```cmd
+   start.bat
+   ```
+
+   Default: http://localhost:8000
+
+   Frontend (Next.js)
+   1) Install deps
+
+   ```cmd
+   cd D:\Desktop\ELEC_5620_Final\frontend
+   npm install
+   ```
+
+   2) Configure backend base URL (optional)
+
+   Create `frontend/.env.local`:
+
+   ```
+   NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+   ```
+
+   3) Start dev server
+
+   ```cmd
+   npm run dev
+   ```
+
+   Visit http://localhost:3000.
+
+   ### End-to-End Flow
+
+   1) Dashboard shows the latest analysis and history. Click an item to open the result.
+   2) On the Upload page, select receipts/images and fill in the description, then submit:
+       - UI calls POST /cases to create a case (returns case_id)
+       - Then calls POST /analyze to run AI analysis
+       - The result is saved to localStorage (lastAnalysis and analysisHistory) and the UI navigates to the Result page
+   3) Result page shows raw analysis plus structured fields (key_points, steps)
+
+   Note: The Dashboard “Status” is currently a front-end marker (set to “Analyzed” after analysis completes). For precise progress tracking, extend backend persistence and state transitions.
+
+   ### API Contract (Brief)
+
+   - POST /cases (multipart/form-data)
+      - In: receipt_files[], product_images[], issue_description
+      - Out: `{ case_id: string, status: "created" }`
+
+   - POST /analyze (application/x-www-form-urlencoded)
+      - In: `issue_description: string`
+      - Out:
+         ```json
+         {
+            "model": "gpt-4o-mini",
+            "issue_description": "...",
+            "analysis": "...",
+            "key_points": ["..."],
+            "steps": ["..."]
+         }
+         ```
+
+   - GET /health → `{ status: "ok" }`
+
+   ### Troubleshooting
+
+   - 401/403: Check OPENAI_API_KEY and ensure the process is loading .env (restart terminal/VS Code)
+   - 429: Rate/Quota limits — retry later, switch model, or increase quota
+   - Model compatibility: We use a minimal parameter set to avoid unsupported options (e.g., temperature/max_tokens on certain models)
+   - Dashboard not updating: It reads from localStorage; submit a new analysis or clear local data (Dashboard buttons)
+
+   ### Security
+
+   - Do not commit `.env` to version control
+   - Rotate your API key immediately if it’s leaked
