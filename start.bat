@@ -1,9 +1,9 @@
 @echo off
-REM start.bat - Windows 一键启动后端（开发模式）
+REM start.bat - Windows one-click backend start (development mode)
 
 set PORT=8000
 
-REM 如有虚拟环境，请先激活，例如：
+REM If you use a virtual environment, activate it first, e.g.:
 REM call .venv\Scripts\activate
 
 uvicorn backend.main:app --reload --port %PORT%

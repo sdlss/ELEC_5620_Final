@@ -1,7 +1,7 @@
 """
 config.py (OpenAI only)
-说明：仅使用 OpenAI 公共 API 的最小配置封装。
-提供 get_chat_client() → (client, model)
+Note: Minimal configuration wrapper using the public OpenAI API only.
+Provides get_chat_client() → (client, model)
 """
 
 import os
@@ -11,7 +11,7 @@ from typing import Tuple
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# 自动加载 .env（若存在）
+# Auto-load .env (if present)
 load_dotenv(override=False)
 
 
@@ -23,11 +23,11 @@ class Settings:
 	def __init__(self) -> None:
 		self.openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
 		self.openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip()
-		self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+		self.openai_model = os.getenv("OPENAI_MODEL", "gpt-5-nano").strip() or "gpt-5-nano"
 
 	def validate(self):
 		if not self.openai_api_key:
-			raise RuntimeError("缺少 OPENAI_API_KEY")
+			raise RuntimeError("Missing OPENAI_API_KEY")
 
 
 @lru_cache()

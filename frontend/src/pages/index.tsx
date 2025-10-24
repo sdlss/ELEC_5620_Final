@@ -61,7 +61,48 @@ const IndexPage: React.FC = () => {
 
 	const keyPoints = last?.analysis?.key_points ?? [];
 	const steps = last?.analysis?.steps ?? [];
-		const lastStatus = last?.status || (last?.analysis ? 'Analyzed' : '—');
+
+	// Status helpers: color mapping + optional progress
+	const lastStatus = last?.status || (last?.analysis ? 'Analyzed' : '—');
+
+	const getStatusStyle = (status: string) => {
+		const s = (status || '').toLowerCase();
+		// success
+		if (['refund_completed', 'platform_decision_approved'].includes(s)) {
+			return { bg: '#d1fae5', color: '#065f46', border: '#10b981' }; // green
+		}
+		// in-progress
+		if ([
+			'submitted_to_platform', 'return_in_transit', 'seller_warehouse_received',
+			'refund_processing', 'platform_investigating',
+		].includes(s) || s.startsWith('analyzing_') || s === 'analysis_completed') {
+			return { bg: '#dbeafe', color: '#1e40af', border: '#3b82f6' }; // blue
+		}
+		// user action pending
+		if (['awaiting_user_evidence', 'buyer_ship_return'].includes(s)) {
+			return { bg: '#fffbeb', color: '#92400e', border: '#f59e0b' }; // amber
+		}
+		// error/closed
+		if ([
+			'refund_rejected', 'platform_decision_rejected', 'closed_no_action', 'analysis_failed'
+		].includes(s)) {
+			return { bg: '#fee2e2', color: '#991b1b', border: '#ef4444' }; // red
+		}
+		// default neutral
+		return { bg: '#f3f4f6', color: '#111827', border: '#e5e7eb' }; // gray
+	};
+
+	const statusStyle = getStatusStyle(lastStatus);
+	const progressPercentRaw = (
+		last?.progress_percent ??
+		last?.progressPercent ??
+		(last && last.progress && (last.progress.percent ?? last.progress.progress_percent)) ??
+		(last && last.analysis && (last.analysis.progress_percent ?? last.analysis.progressPercent))
+	);
+	let progressPercent: number | null = null;
+	if (typeof progressPercentRaw === 'number' && isFinite(progressPercentRaw)) {
+		progressPercent = Math.max(0, Math.min(100, Math.round(progressPercentRaw)));
+	}
 
 		const openHistoryItem = (item: HistoryItem) => {
 			try {
@@ -98,7 +139,26 @@ const IndexPage: React.FC = () => {
 					</div>
 								<div style={cardStyle}>
 									<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Status</div>
-									<div style={{ marginTop: 8, fontSize: 18, fontWeight: 600 }}>{lastStatus}</div>
+									<div style={{ marginTop: 8 }}>
+										<span style={{
+											display: 'inline-block',
+											padding: '4px 10px',
+											borderRadius: 999,
+											fontWeight: 700,
+											fontSize: 14,
+											background: statusStyle.bg,
+											color: statusStyle.color,
+											border: `1px solid ${statusStyle.border}`,
+										}}>{lastStatus}</span>
+									</div>
+									{(progressPercent !== null) && (
+										<div style={{ marginTop: 10 }}>
+											<div style={{ height: 8, background: '#f3f4f6', borderRadius: 999, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+												<div style={{ width: `${progressPercent}%`, height: '100%', background: statusStyle.border }} />
+											</div>
+											<div style={{ marginTop: 6, color: '#6b7280', fontSize: 12 }}>{progressPercent}%</div>
+										</div>
+									)}
 								</div>
 					<div style={cardStyle}>
 						<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Key Points</div>

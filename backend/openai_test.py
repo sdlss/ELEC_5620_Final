@@ -1,14 +1,10 @@
 r"""
 openai_test.py
-说明：使用 OPENAI_API_KEY 做最小连通性测试。
+Note: Minimal connectivity test using OPENAI_API_KEY.
 
-在 .env 写：
-  OPENAI_API_KEY=sk-...
-  # 可选：OPENAI_MODEL=gpt-4o-mini（默认）
-  # 可选：OPENAI_BASE_URL=自定义基地址（通常不需要）
-
-运行（Windows cmd，模块方式）：
-  D:\anaconda\Scripts\conda.exe run -p d:\Desktop\ELEC_5620_Final\.conda --no-capture-output python -m backend.openai_test
+In .env, set:
+    OPENAI_API_KEY=sk-...
+    # OPENAI_MODEL=gpt-5-nano
 """
 
 import os

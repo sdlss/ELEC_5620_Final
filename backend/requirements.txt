@@ -3,5 +3,5 @@ uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 pydantic>=2.8.0
 aiofiles>=24.1.0
-# 如需大模型接入，可添加 openai>=1.40.0 或其他 SDK
+# If you need LLM connectivity, include openai>=1.40.0 or other SDKs
 openai>=1.40.0

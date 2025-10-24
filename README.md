@@ -70,6 +70,35 @@ start.bat                       # Windows 一键启动后端（可选）
 
 ---
 
+## 近期更新（2025-10-24）
+
+后端（FastAPI）
+- 健康检查增强：`GET /health` 返回运行时、配置、存储、CORS 信息；支持 `?deep=true` 尝试轻量 OpenAI 连通性检查。
+- 工单创建扩展：`POST /cases` 现在支持直接提供 `receipt_id`（无需上传收据文件），会在本地 uploads 中记录该 ID；引入内存状态机，统一返回 `status/timestamps/progress_percent`。
+- 分析流程标准化：`POST /analyze` 接受 `case_id`，在开始/结束时更新状态并把 `status/timestamps/progress_percent` 附加到响应；未提供 `case_id` 时返回一次性完成状态（progress 100）。
+- 新增模块：`backend/status.py` 简易内存状态机（case_created → analyzing_issue → analysis_completed）。
+- 冒烟测试：
+   - `python -m backend.smoke_status` 验证 /cases + /analyze 基本状态流。
+   - `python -m backend.smoke_receipt_id` 验证携带 `receipt_id` 的新路径与最终状态字段。
+
+前端（Next.js）
+- Upload 页面：将“收据文件上传”改为“填写 Receipt ID”，仍可上传商品图片；提交后串联调用 `/cases` 与 `/analyze`，并把 `status/progress/timestamps` 一并持久化至 localStorage。
+- Dashboard：保留状态徽章与（若有）进度条显示；右侧 Quick View 从本地历史读取最近案例；结果页显示 `analysis/key_points/steps`。
+- API 封装：`analyzeIssue(issue_description, case_id?)` 支持传入 `case_id`，便于在响应中拿到标准状态字段。
+
+配置与启动
+- `.env` 仍采用 OPENAI 公共 API：
+   - 必填：`OPENAI_API_KEY`
+   - 可选：`OPENAI_MODEL`（默认 `gpt-5-nano`，可按你账号可用模型调整，如 `gpt-4o-mini`）
+   - 可选：`OPENAI_BASE_URL`
+- 启动后端（开发）：
+   - 方式一：双击或运行 `start.bat`
+   - 方式二（显式命令）：
+
+      D:\anaconda\Scripts\conda.exe run -p d:\Desktop\ELEC_5620_Final\.conda --no-capture-output python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+说明：如果模型不可用或 Key 缺失，`/health?deep=true` 可能显示 `degraded`，但基本路由仍可用。
+
 ## 近期更新（2025-10-22）
 
 - 首页重构为 User Dashboard：

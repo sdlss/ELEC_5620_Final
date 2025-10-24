@@ -39,21 +39,20 @@ const secondaryBtn: React.CSSProperties = {
 };
 
 const UploadPage: React.FC = () => {
-	const [receiptFiles, setReceiptFiles] = useState<FileList | null>(null);
-	const [productImages, setProductImages] = useState<FileList | null>(null);
-	const [issueDescription, setIssueDescription] = useState<string>('');
-	const [submitting, setSubmitting] = useState(false);
-	const [message, setMessage] = useState<string>('');
-	const router = useRouter();
-	const receiptInputRef = useRef<HTMLInputElement>(null);
-	const imageInputRef = useRef<HTMLInputElement>(null);
+    const [receiptId, setReceiptId] = useState<string>('');
+    const [productImages, setProductImages] = useState<FileList | null>(null);
+    const [issueDescription, setIssueDescription] = useState<string>('');
+    const [submitting, setSubmitting] = useState(false);
+    const [message, setMessage] = useState<string>('');
+    const router = useRouter();
+    const imageInputRef = useRef<HTMLInputElement>(null);
 
-	const summarize = (fl: FileList | null) => {
-		if (!fl || fl.length === 0) return 'No files selected';
-		const names = Array.from(fl).map(f => f.name);
-		if (names.length <= 2) return names.join(', ');
-		return `${names.slice(0,2).join(', ')} +${names.length - 2} more`;
-	};
+    const summarize = (fl: FileList | null) => {
+        if (!fl || fl.length === 0) return 'No files selected';
+        const names = Array.from(fl).map(f => f.name);
+        if (names.length <= 2) return names.join(', ');
+        return `${names.slice(0,2).join(', ')} +${names.length - 2} more`;
+    };
 
 	const onSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
 		e.preventDefault();
@@ -61,9 +60,8 @@ const UploadPage: React.FC = () => {
 		setSubmitting(true);
 		try {
 			const fd = new FormData();
-			if (receiptFiles) {
-				Array.from(receiptFiles).forEach(f => fd.append('receipt_files', f));
-			}
+			// New path: do not upload receipt files; provide Receipt ID (backend will fetch from DB)
+			fd.append('receipt_id', receiptId || '');
 			if (productImages) {
 				Array.from(productImages).forEach(f => fd.append('product_images', f));
 			}
@@ -77,10 +75,19 @@ const UploadPage: React.FC = () => {
 			}
 			setMessage(`Submitted successfully, case_id: ${created.case_id}. Running analysis...`);
 
-			// 2) Call analysis directly using the same description
-			const analysis = await analyzeIssue(issueDescription || '');
-			// Persist result locally for the result page
-			const entry = { case_id: created.case_id, analysis, created_at: new Date().toISOString(), status: 'Analyzed' };
+			// 2) Call analysis directly using the same description and case_id to keep status/timestamps unified
+			const analysis = await analyzeIssue(issueDescription || '', created.case_id);
+			// Persist result locally for the result page with backend-provided status/progress/timestamps if available
+			const entry: any = {
+				case_id: created.case_id,
+				receipt_id: created?.receipt_id || receiptId || undefined,
+				created_at: new Date().toISOString(),
+				// prefer analysis status, then created status, then fallback
+				status: analysis?.status || created?.status || 'analyzed',
+				progress_percent: (analysis?.progress_percent ?? created?.progress_percent ?? 100),
+				timestamps: analysis?.timestamps || created?.timestamps,
+				analysis
+			};
 			localStorage.setItem('lastAnalysis', JSON.stringify(entry));
 			// Append to history list for Quick View
 			try {
@@ -112,33 +119,14 @@ const UploadPage: React.FC = () => {
 
 				<form onSubmit={onSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
 					<div style={card}>
-						<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Receipt files</div>
-						<div
-							style={dropzoneBase}
-							onClick={() => receiptInputRef.current?.click()}
-							onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-							onDrop={(e) => { e.preventDefault(); setReceiptFiles(e.dataTransfer.files); }}
-						>
-							<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-								<div>
-									<div style={{ fontWeight: 600 }}>Click to choose files or drag and drop</div>
-									<div style={{ color: '#6b7280', fontSize: 12 }}>Accepted: images/PDF, multiple</div>
-								</div>
-								<button type="button" style={secondaryBtn} onClick={(e) => { e.preventDefault(); receiptInputRef.current?.click(); }}>Browse</button>
-							</div>
-							<div style={{ marginTop: 8, color: '#111827' }}>{summarize(receiptFiles)}</div>
-							<input
-								ref={receiptInputRef}
-								type="file"
-								accept="image/*,application/pdf"
-								multiple
-								style={{ display: 'none' }}
-								onChange={(e) => setReceiptFiles(e.target.files)}
-							/>
-						</div>
-						<div style={{ marginTop: 8 }}>
-							<button type="button" style={secondaryBtn} onClick={() => setReceiptFiles(null)}>Clear receipts</button>
-						</div>
+						<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Receipt ID</div>
+						<input
+							type="text"
+							value={receiptId}
+							onChange={(e) => setReceiptId(e.target.value)}
+							placeholder="e.g., RCP-20251024-0001"
+							style={{ width: '100%', marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}
+						/>
 					</div>
 
 					<div style={card}>
@@ -184,7 +172,7 @@ const UploadPage: React.FC = () => {
 							<button type="submit" disabled={submitting} style={primaryBtn}>
 								{submitting ? 'Submitting…' : 'Submit'}
 							</button>
-							<button type="button" style={secondaryBtn} onClick={() => { setReceiptFiles(null); setProductImages(null); setIssueDescription(''); setMessage(''); }}>Reset</button>
+							<button type="button" style={secondaryBtn} onClick={() => { setReceiptId(''); setProductImages(null); setIssueDescription(''); setMessage(''); }}>Reset</button>
 						</div>
 						{message && (
 							<p style={{ marginTop: 12 }}>{message}</p>
