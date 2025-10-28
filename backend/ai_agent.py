@@ -7,12 +7,12 @@ and parse it with a safe fallback to plain text.
 
 from typing import Dict, Any, List
 import json
-from .config import get_chat_client
+from config import get_chat_client  # Changed from relative import
 
 
 
 
-def analyze_issue(issue_description: str) -> Dict[str, Any]:
+async def analyze_issue(issue_description: str) -> Dict[str, Any]:
 	"""
 	Minimal analysis: summarize key points and next steps based on the description.
 	Returns a dict that always includes:
@@ -41,14 +41,18 @@ def analyze_issue(issue_description: str) -> Dict[str, Any]:
 		"- steps: up to 3 actionable next steps.\n"
 	)
 
-	resp = client.chat.completions.create(
-		model=model,
-		messages=[
-			{"role": "system", "content": system_prompt},
-			{"role": "user", "content": user_prompt},
-		],
-	)
-	content = resp.choices[0].message.content if resp.choices else ""
+	try:
+		resp = await client.chat.completions.create(
+			model=model,
+			messages=[
+				{"role": "system", "content": system_prompt},
+				{"role": "user", "content": user_prompt},
+			],
+		)
+		content = resp.choices[0].message.content if resp.choices else ""
+	except Exception as e:
+		print(f"OpenAI API error: {str(e)}")
+		content = ""
 
 	# Try to parse the JSON shape { key_points: [...], steps: [...] }
 	key_points: List[str] = []

@@ -75,8 +75,8 @@ def parse_receipt_fields(ocr_text: str, debug: bool = False) -> Dict[str, Any]:
 
     # Extract Payment Method
     for line in lines:
-        if re.search(r'(VISA|MASTERCARD|AMEX|PAYPAL|CASH|CARD)', line):
-            pmatch = re.search(r'(VISA|MASTERCARD|AMEX|PAYPAL|CASH|CARD)', line)
+        pmatch = re.search(r'(VISA|MASTERCARD|AMEX|PAYPAL|CASH|CARD)', line)
+        if pmatch:
             result["payment_method"] = pmatch.group(1).title()
             result["field_confidence"]["payment_method"] = 1.0
             break

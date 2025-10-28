@@ -1,46 +1,45 @@
 """
 config.py (OpenAI only)
 Note: Minimal configuration wrapper using the public OpenAI API only.
-Provides get_chat_client() → (client, model)
+Provides get_chat_client() → (client, model) and get_settings()
 """
 
 import os
-from functools import lru_cache
-from typing import Tuple
-
+from dataclasses import dataclass
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import AsyncOpenAI
+from typing import Tuple, Optional
 
-# Auto-load .env (if present)
-load_dotenv(override=False)
+# Load environment variables from .env file
+load_dotenv()
 
-
+@dataclass
 class Settings:
-	openai_api_key: str
-	openai_base_url: str
-	openai_model: str
+    """Application settings loaded from environment variables."""
+    openai_api_key: Optional[str] = None
+    openai_base_url: Optional[str] = None
+    openai_model: str = "gpt-3.5-turbo"
 
-	def __init__(self) -> None:
-		self.openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
-		self.openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip()
-		self.openai_model = os.getenv("OPENAI_MODEL", "gpt-5-nano").strip() or "gpt-5-nano"
+    def __post_init__(self):
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", self.openai_api_key)
+        self.openai_base_url = os.getenv("OPENAI_BASE_URL", self.openai_base_url)
+        self.openai_model = os.getenv("OPENAI_MODEL", self.openai_model)
 
-	def validate(self):
-		if not self.openai_api_key:
-			raise RuntimeError("Missing OPENAI_API_KEY")
+_settings = Settings()
 
-
-@lru_cache()
 def get_settings() -> Settings:
-	return Settings()
+    """Get application settings singleton."""
+    return _settings
 
-
-def get_chat_client() -> Tuple[OpenAI, str]:
-	s = get_settings()
-	s.validate()
-	if s.openai_base_url:
-		client = OpenAI(api_key=s.openai_api_key, base_url=s.openai_base_url)
-	else:
-		client = OpenAI(api_key=s.openai_api_key)
-	return client, s.openai_model
+def get_chat_client() -> Tuple[AsyncOpenAI, str]:
+    """Get OpenAI chat client and model name"""
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise ValueError("OPENAI_API_KEY environment variable is not set")
+    
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url if settings.openai_base_url else None
+    )
+    return client, settings.openai_model
 

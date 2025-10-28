@@ -25,3 +25,5 @@ frontend/.vercel/
 # VS Code
 .vscode/*
 !.vscode/settings.json
+
+*.pdf

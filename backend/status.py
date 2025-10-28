@@ -80,3 +80,16 @@ def to_response(case_id: str) -> Dict[str, Any]:
         "timestamps": s.get("timestamps", {}),
         "progress_percent": s.get("progress_percent"),
     }
+
+def case_exists(case_id: str) -> bool:
+    """Check if a case exists in the store."""
+    return case_id in _STORE
+
+def update_case(case_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Update case data with new fields."""
+    if not case_exists(case_id):
+        raise KeyError(f"Case {case_id} not found")
+    
+    entry = _STORE[case_id]
+    entry.update(update_data)
+    return entry
