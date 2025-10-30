@@ -10,15 +10,21 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from typing import Tuple, Optional
 
-# Load environment variables from .env file
+# Load environment variables from .env file (robust to working directory)
+_HERE = os.path.dirname(__file__)
+_BACKEND_ENV = os.path.join(_HERE, ".env")
+# 1) Load repo-root .env if present (cwd or parent)
 load_dotenv()
+# 2) Also load backend/.env explicitly to support running from project root
+if os.path.exists(_BACKEND_ENV):
+    load_dotenv(_BACKEND_ENV, override=False)
 
 @dataclass
 class Settings:
     """Application settings loaded from environment variables."""
     openai_api_key: Optional[str] = None
     openai_base_url: Optional[str] = None
-    openai_model: str = "gpt-3.5-turbo"
+    openai_model: str = "gpt-4o-mini"
 
     def __post_init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY", self.openai_api_key)

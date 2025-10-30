@@ -1,9 +1,10 @@
 import easyocr
 import re
 import sys
+import os
 import cv2
 import numpy as np
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List
 
 def preprocess_image(image_path: str) -> np.ndarray:
     img = cv2.imread(image_path)
@@ -20,6 +21,7 @@ def extract_text_from_image(image_path: str, use_preprocessing: bool = True) -> 
     img = preprocess_image(image_path) if use_preprocessing else image_path
     results = reader.readtext(img, detail=0, paragraph=False)
     return '\n'.join(str(line) for line in results)
+
 
 def parse_receipt_fields(ocr_text: str, debug: bool = False) -> Dict[str, Any]:
     result = {

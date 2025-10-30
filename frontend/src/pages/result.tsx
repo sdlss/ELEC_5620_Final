@@ -1,5 +1,5 @@
 // result.tsx
-// Result page: display structured analysis returned by the backend/AI.
+// Result page: Refund Eligibility Report based on backend AI (classification/eligibility).
 
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
@@ -8,11 +8,10 @@ import Link from 'next/link';
 const ResultPage: React.FC = () => {
 	const [loaded, setLoaded] = useState(false);
 	const [caseId, setCaseId] = useState<string>('');
-	const [model, setModel] = useState<string>('');
 	const [issueDescription, setIssueDescription] = useState<string>('');
-	const [analysis, setAnalysis] = useState<string>('');
-	const [keyPoints, setKeyPoints] = useState<string[]>([]);
-	const [steps, setSteps] = useState<string[]>([]);
+	const [report, setReport] = useState<any>(null); // { classification, eligibility, final_report }
+	const [finalReport, setFinalReport] = useState<any>(null);
+	const [receipts, setReceipts] = useState<any[]>([]);
 
 	useEffect(() => {
 		try {
@@ -22,13 +21,14 @@ const ResultPage: React.FC = () => {
 				return;
 			}
 			const parsed = JSON.parse(raw);
-			const a = parsed?.analysis;
+			// Use backend-generated case_id recorded by upload page
 			setCaseId(parsed?.case_id || '');
-			setModel(a?.model || '');
-			setIssueDescription(a?.issue_description || '');
-			setAnalysis(a?.analysis || '');
-			setKeyPoints(Array.isArray(a?.key_points) ? a.key_points : []);
-			setSteps(Array.isArray(a?.steps) ? a.steps : []);
+			setIssueDescription(parsed?.analysis?.issue_description || '');
+			// Prefer structured report saved by upload page; fallback to derive minimal report from analysis text
+			const structured = parsed?.report || null;
+			setReport(structured || null);
+			setFinalReport(structured?.final_report || null);
+			setReceipts(Array.isArray(parsed?.receipts) ? parsed?.receipts : []);
 		} catch (e) {
 			// ignore parse errors
 		} finally {
@@ -36,58 +36,172 @@ const ResultPage: React.FC = () => {
 		}
 	}, []);
 
-	if (!loaded) return <div style={{ maxWidth: 800, margin: '24px auto', padding: 16 }}>Loading…</div>;
+	if (!loaded) return <div style={{ maxWidth: 1040, margin: '24px auto', padding: 16 }}>Loading…</div>;
 
-	const hasData = !!analysis || (keyPoints?.length ?? 0) > 0 || (steps?.length ?? 0) > 0;
+	const hasData = !!(report || finalReport);
+
+	const pageBg = { minHeight: '100vh', background: '#f7f7f9' } as React.CSSProperties;
+	const container = { maxWidth: 1040, margin: '0 auto', padding: '24px 16px' } as React.CSSProperties;
+	const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' } as React.CSSProperties;
+	const badge = (ok: boolean) => ({
+		display: 'inline-block',
+		padding: '4px 10px',
+		borderRadius: 999,
+		fontWeight: 700,
+		fontSize: 14,
+		background: ok ? '#d1fae5' : '#fee2e2',
+		color: ok ? '#065f46' : '#991b1b',
+		border: `1px solid ${ok ? '#10b981' : '#ef4444'}`,
+	} as React.CSSProperties);
+
+	const eligible = !!report?.eligibility?.eligible;
 
 	return (
-		<div style={{ maxWidth: 800, margin: '24px auto', padding: 16 }}>
-			<h1>Analysis Result</h1>
+		<div style={pageBg}>
+			<div style={container}>
+				{/* Header */}
+				<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+					<div>
+						<h1 style={{ margin: 0 }}>Refund Handling Report</h1>
+						<p style={{ color: '#6b7280', margin: '4px 0 0' }}>AI-generated case summary, decision and suggestions.</p>
+					</div>
+					<div style={{ display: 'flex', gap: 8 }}>
+						<Link href="/" style={{
+							background: '#f3f4f6', color: '#111827', padding: '10px 12px', borderRadius: 8,
+							textDecoration: 'none', border: '1px solid #e5e7eb', fontWeight: 600
+						}}>← Back to Dashboard</Link>
+						<Link href="/upload" style={{
+							background: '#111827', color: '#fff', padding: '10px 12px', borderRadius: 8,
+							textDecoration: 'none', border: '1px solid #111827', fontWeight: 600
+						}}>+ New Upload</Link>
+					</div>
+				</div>
 			{!hasData && (
 				<>
-					<p>No analysis data found. Please go to the upload page and submit your issue.</p>
+					<p>No report data found. Please go to the upload page and submit your receipt and issue.</p>
 					<Link href="/upload">Go to Upload</Link>
 				</>
 			)}
 
 			{hasData && (
 				<>
-					{caseId && <p><strong>Case ID:</strong> {caseId}</p>}
-					{model && <p><strong>Model:</strong> {model}</p>}
-					{issueDescription && (
-						<div style={{ marginTop: 12 }}>
-							<h3>Issue Description</h3>
-							<p style={{ whiteSpace: 'pre-wrap' }}>{issueDescription}</p>
+					{/* Summary strip */}
+					<div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+						<div style={{ minWidth: 0 }}>
+							<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Case</div>
+							<div style={{ fontSize: 18, fontWeight: 700, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{caseId || '—'}</div>
 						</div>
-					)}
-					{analysis && (
-						<div style={{ marginTop: 12 }}>
-							<h3>Raw Analysis</h3>
-							<p style={{ whiteSpace: 'pre-wrap' }}>{analysis}</p>
+						<div>
+							<span style={badge(eligible)}>{eligible ? 'Eligible for refund' : 'Not eligible'}</span>
 						</div>
-					)}
-					{keyPoints?.length > 0 && (
-						<div style={{ marginTop: 12 }}>
-							<h3>Key Points</h3>
-							<ul>
-								{keyPoints.map((k, i) => <li key={i}>{k}</li>)}
-							</ul>
-						</div>
-					)}
-					{steps?.length > 0 && (
-						<div style={{ marginTop: 12 }}>
-							<h3>Next Steps</h3>
-							<ol>
-								{steps.map((s, i) => <li key={i}>{s}</li>)}
-							</ol>
+					</div>
+
+					{/* Decision only (remove issue description panel) */}
+					<div style={{ ...card, marginTop: 16 }}>
+						<h3 style={{ marginTop: 0 }}>Decision</h3>
+						{report?.eligibility ? (
+							<div>
+								<div><strong>Status:</strong> {report.eligibility.eligible ? 'Eligible for refund' : 'Not eligible'}</div>
+								{report.eligibility.model ? (
+									<div style={{ marginTop: 6 }}><strong>Model:</strong> {report.eligibility.model}</div>
+								) : null}
+							</div>
+						) : (
+							<p style={{ color: '#6b7280' }}>No eligibility data.</p>
+						)}
+					</div>
+					{/* Swap order: show Receipt Summary (OCR) first, then Reason (AI final report) */}
+					{/* Receipt Summary from OCR parsed results */}
+					<div style={{ ...card, marginTop: 16 }}>
+						<h3 style={{ marginTop: 0 }}>Receipt Summary</h3>
+						{Array.isArray(receipts) && receipts.length > 0 && receipts[0]?.pages?.length > 0 ? (
+							(() => {
+								const firstPage = receipts[0].pages[0];
+								const parsed = firstPage?.parsed || {};
+								const items = Array.isArray(parsed.item_list) ? parsed.item_list : [];
+								return (
+									<div>
+										<ul style={{ marginTop: 8 }}>
+											{parsed.seller_name ? <li><strong>Seller:</strong> {parsed.seller_name}</li> : null}
+											{parsed.receipt_id ? <li><strong>Receipt ID:</strong> {parsed.receipt_id}</li> : null}
+											{parsed.purchase_date ? <li><strong>Date:</strong> {parsed.purchase_date}</li> : null}
+											{parsed.payment_method ? <li><strong>Payment:</strong> {parsed.payment_method}</li> : null}
+											{parsed.purchase_total?.value != null ? <li><strong>Total:</strong> {parsed.purchase_total.currency || 'USD'} {parsed.purchase_total.value}</li> : null}
+										</ul>
+										{items.length > 0 && (
+											<div style={{ marginTop: 8 }}>
+												<h4 style={{ margin: '8px 0' }}>Items</h4>
+												<ul>
+													{items.map((it: any, i: number) => (
+														<li key={i}>{it.description} {typeof it.price === 'number' ? `- $${it.price.toFixed(2)}` : ''}</li>
+													))}
+												</ul>
+											</div>
+										)}
+									</div>
+								);
+							})()
+						) : (
+							<p style={{ color: '#6b7280' }}>No OCR results available.</p>
+						)}
+					</div>
+
+					{/* Decision */}
+					{/* Decision Reason */}
+
+					{/* Reason: now show AI Agent final report */}
+					<div style={{ ...card, marginTop: 16 }}>
+						<h3 style={{ marginTop: 0 }}>Reason</h3>
+						{finalReport?.analysis ? (
+							<>
+								<p style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{finalReport.analysis}</p>
+								{Array.isArray(finalReport.key_points) && finalReport.key_points.length > 0 && (
+									<>
+										<h4>Key Points</h4>
+										<ul style={{ marginTop: 6 }}>
+											{finalReport.key_points.map((k: string, i: number) => <li key={i}>{k}</li>)}
+										</ul>
+									</>
+								)}
+								{Array.isArray(finalReport.steps) && finalReport.steps.length > 0 && (
+									<>
+										<h4>Recommended Steps</h4>
+										<ol style={{ marginTop: 6 }}>
+											{finalReport.steps.map((s: string, i: number) => <li key={i}>{s}</li>)}
+										</ol>
+									</>
+								)}
+							</>
+						) : (
+							<p style={{ color: '#6b7280' }}>No AI report available.</p>
+						)}
+					</div>
+
+					{/* Classification (optional, if backend provided) */}
+					{report?.classification && (
+						<div style={{ ...card, marginTop: 16 }}>
+							<h3 style={{ marginTop: 0 }}>Issue Classification</h3>
+							<pre style={{ whiteSpace: 'pre-wrap', background: '#f8f9fb', padding: 12, borderRadius: 8, marginTop: 8 }}>
+								{JSON.stringify(report.classification, null, 2)}
+							</pre>
 						</div>
 					)}
 
-					<div style={{ marginTop: 24 }}>
-						<Link href="/upload">Upload another</Link>
+					{/* keep classification card if present */}
+
+					<div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+						<Link href="/" style={{
+							background: '#f3f4f6', color: '#111827', padding: '10px 12px', borderRadius: 8,
+							textDecoration: 'none', border: '1px solid #e5e7eb', fontWeight: 600
+						}}>← Back to Dashboard</Link>
+						<Link href="/upload" style={{
+							background: '#111827', color: '#fff', padding: '10px 12px', borderRadius: 8,
+							textDecoration: 'none', border: '1px solid #111827', fontWeight: 600
+						}}>+ New Upload</Link>
 					</div>
 				</>
 			)}
+			</div>
 		</div>
 	);
 };

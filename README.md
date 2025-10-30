@@ -176,6 +176,12 @@ npm run dev
 
    ---
 
+   ## 上传PDF前启动后端
+   D:\anaconda\Scripts\conda.exe run -p d:\Desktop\ELEC_5620_Final\.conda --no-capture-output uvicorn backend.main:app --host 127.0.0.1 --port 8000
+
+   ## 调试接口
+    http://127.0.0.1:8000/docs
+
    ## English Version
 
    ### Overview
@@ -330,3 +336,17 @@ npm run dev
 
    - Do not commit `.env` to version control
    - Rotate your API key immediately if it’s leaked
+
+
+
+  ## Recover after unzip
+  - cd D:\Desktop\ELEC_5620_Final
+  - py -3 -m venv .venv
+  - .venv\Scripts\activate
+  - pip install -r backend\requirements.txt
+  - D:\anaconda\Scripts\conda.exe run -p d:\Desktop\ELEC_5620_Final\.conda --no-capture-output uvicorn backend.main:app --host 127.0.0.1 --port 8000
+
+  - cd D:\Desktop\ELEC_5620_Final\frontend
+  - npm install
+  - create .env.local file : NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+  - npm run dev

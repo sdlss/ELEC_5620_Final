@@ -1,10 +1,10 @@
-r"""
+"""
 openai_test.py
 Note: Minimal connectivity test using OPENAI_API_KEY.
 
 In .env, set:
     OPENAI_API_KEY=sk-...
-    # OPENAI_MODEL=gpt-5-nano
+    # OPENAI_MODEL=gpt-40-mini
 """
 
 import os

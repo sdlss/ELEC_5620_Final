@@ -53,3 +53,46 @@ export async function analyzeIssue(issue_description: string, case_id?: string):
 }
 
 // Note: healthCheck removed per request
+
+// New: upload receipt files (images/PDF) and optional issue description for OCR + eligibility
+export interface AnalyzeReceiptResponse {
+	ok: boolean;
+	issue_description?: string;
+	classification?: any;
+	eligibility?: {
+		eligible: boolean;
+		reason: string;
+		model: string;
+		summary?: {
+			item?: string | null;
+			price?: { currency: string; value: number } | null;
+			date?: { raw?: string; iso?: string } | null;
+		}
+	};
+	final_report?: {
+		model?: string;
+		analysis?: string;
+		key_points?: string[];
+		steps?: string[];
+		error?: string;
+	};
+	receipts?: Array<{
+		filename: string;
+		pages: Array<{
+			image_path: string;
+			parsed: any;
+		}>;
+	}>;
+}
+
+export async function analyzeReceipt(formData: FormData): Promise<AnalyzeReceiptResponse> {
+	const res = await fetch(`${baseURL}/api/receipt/analyze`, {
+		method: 'POST',
+		body: formData,
+	});
+	if (!res.ok) {
+		const text = await res.text().catch(() => '');
+		throw new Error(`Backend error: ${res.status} ${text}`);
+	}
+	return res.json();
+}

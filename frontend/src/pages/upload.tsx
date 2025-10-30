@@ -10,7 +10,7 @@
 // @ts-nocheck
 import React, { useRef, useState } from 'react';
 import { useRouter } from 'next/router'
-import { uploadCase, analyzeIssue } from '../utils/api';
+import { analyzeReceipt } from '../utils/api';
 
 const card: React.CSSProperties = {
 	background: '#fff',
@@ -39,13 +39,16 @@ const secondaryBtn: React.CSSProperties = {
 };
 
 const UploadPage: React.FC = () => {
-    const [receiptId, setReceiptId] = useState<string>('');
-    const [productImages, setProductImages] = useState<FileList | null>(null);
+	const [receiptId, setReceiptId] = useState<string>('');
+	const [productImages, setProductImages] = useState<FileList | null>(null);
+	const [receiptFiles, setReceiptFiles] = useState<FileList | null>(null);
     const [issueDescription, setIssueDescription] = useState<string>('');
     const [submitting, setSubmitting] = useState(false);
     const [message, setMessage] = useState<string>('');
     const router = useRouter();
     const imageInputRef = useRef<HTMLInputElement>(null);
+	const receiptInputRef = useRef<HTMLInputElement>(null);
+	const [showReceiptDialog, setShowReceiptDialog] = useState(false);
 
     const summarize = (fl: FileList | null) => {
         if (!fl || fl.length === 0) return 'No files selected';
@@ -54,39 +57,48 @@ const UploadPage: React.FC = () => {
         return `${names.slice(0,2).join(', ')} +${names.length - 2} more`;
     };
 
-	const onSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
+    const onSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
 		e.preventDefault();
 		setMessage('');
 		setSubmitting(true);
 		try {
+			// Build FormData for new OCR + eligibility endpoint
 			const fd = new FormData();
-			// New path: do not upload receipt files; provide Receipt ID (backend will fetch from DB)
-			fd.append('receipt_id', receiptId || '');
-			if (productImages) {
-				Array.from(productImages).forEach(f => fd.append('product_images', f));
+			if (receiptFiles) {
+				Array.from(receiptFiles).forEach(f => fd.append('receipt_files', f));
 			}
 			fd.append('issue_description', issueDescription || '');
+			// Pass user-provided case id to backend
+			fd.append('case_id', receiptId || '');
 
-			// 1) Create the case (saves files and description)
-			const created = await uploadCase(fd);
-			if (!created?.case_id) {
-				setMessage('Submission finished but no case_id returned');
-				return;
-			}
-			setMessage(`Submitted successfully, case_id: ${created.case_id}. Running analysis...`);
+			const resp = await analyzeReceipt(fd);
+			const eligible = resp?.eligibility?.eligible;
+			const reason = resp?.eligibility?.reason || '';
+			const model = resp?.eligibility?.model || '';
+			const summary = resp?.eligibility?.summary || {};
+			const caseIdFromServer = resp?.case_id || '';
 
-			// 2) Call analysis directly using the same description and case_id to keep status/timestamps unified
-			const analysis = await analyzeIssue(issueDescription || '', created.case_id);
-			// Persist result locally for the result page with backend-provided status/progress/timestamps if available
+			// Adapt backend response for result page: prefer final_report for main content
+			const analysisObj: any = resp?.final_report || {
+				model,
+				issue_description: issueDescription,
+				analysis: `Eligible: ${eligible ? 'Yes' : 'No'}\nReason: ${reason}\nItem: ${summary?.item ?? ''}\nPrice: ${summary?.price ? (summary?.price.currency + ' ' + summary?.price.value) : ''}\nDate: ${summary?.date?.raw ?? ''}`,
+				key_points: reason ? [reason] : [],
+				steps: [],
+			};
+
 			const entry: any = {
-				case_id: created.case_id,
-				receipt_id: created?.receipt_id || receiptId || undefined,
+				case_id: caseIdFromServer || receiptId || '',
 				created_at: new Date().toISOString(),
-				// prefer analysis status, then created status, then fallback
-				status: analysis?.status || created?.status || 'analyzed',
-				progress_percent: (analysis?.progress_percent ?? created?.progress_percent ?? 100),
-				timestamps: analysis?.timestamps || created?.timestamps,
-				analysis
+				status: 'analyzed',
+				progress_percent: 100,
+				analysis: analysisObj,
+				report: {
+					classification: resp?.classification || resp?.eligibility?.classification || null,
+					eligibility: resp?.eligibility || null,
+					final_report: resp?.final_report || null,
+				},
+				receipts: resp?.receipts || [],
 			};
 			localStorage.setItem('lastAnalysis', JSON.stringify(entry));
 			// Append to history list for Quick View
@@ -108,6 +120,7 @@ const UploadPage: React.FC = () => {
 	};
 
 	return (
+		<>
 		<div style={{ minHeight: '100vh', background: '#f7f7f9' }}>
 			<div style={{ maxWidth: 860, margin: '0 auto', padding: '24px 16px' }}>
 				<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -118,13 +131,31 @@ const UploadPage: React.FC = () => {
 				</div>
 
 				<form onSubmit={onSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+					{/* Receipt files selector (PDF/PNG/JPEG) */}
 					<div style={card}>
-						<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Receipt ID</div>
+						<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Receipt files</div>
+						<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 8 }}>
+							<div>
+								<div style={{ fontWeight: 600 }}>PDF, PNG, JPEG supported</div>
+								<div style={{ color: '#6b7280', fontSize: 12 }}>Click to open dialog and choose files</div>
+							</div>
+							<div style={{ display: 'flex', gap: 8 }}>
+								<button type="button" style={secondaryBtn} onClick={() => setShowReceiptDialog(true)}>Upload receipt image</button>
+								<button type="button" style={secondaryBtn} onClick={() => setReceiptFiles(null)}>Clear</button>
+							</div>
+						</div>
+						<div style={{ marginTop: 8, color: '#111827' }}>
+							{summarize(receiptFiles)}
+						</div>
+					</div>
+
+					<div style={card}>
+						<div style={{ color: '#6b7280', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>Case ID</div>
 						<input
 							type="text"
 							value={receiptId}
 							onChange={(e) => setReceiptId(e.target.value)}
-							placeholder="e.g., RCP-20251024-0001"
+							placeholder="e.g., CASE-20251024-0001"
 							style={{ width: '100%', marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}
 						/>
 					</div>
@@ -181,6 +212,27 @@ const UploadPage: React.FC = () => {
 				</form>
 			</div>
 		</div>
+
+		{/* Modal dialog for selecting receipt files */}
+		{showReceiptDialog && (
+			<div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+				<div style={{ width: 520, background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+					<h3 style={{ marginTop: 0, marginBottom: 8 }}>Upload receipt image</h3>
+					<p style={{ color: '#6b7280', marginTop: 0 }}>Supported formats: PDF, PNG, JPEG. You can select multiple files.</p>
+					<input
+						ref={receiptInputRef}
+						type="file"
+						accept=".pdf,application/pdf,image/png,image/jpeg,.png,.jpg,.jpeg"
+						multiple
+						onChange={(e) => setReceiptFiles(e.target.files)}
+					/>
+					<div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+						<button type="button" style={secondaryBtn} onClick={() => setShowReceiptDialog(false)}>Done</button>
+					</div>
+				</div>
+			</div>
+		)}
+	</>
 	);
 };
 

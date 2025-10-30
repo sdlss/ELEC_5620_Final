@@ -2,8 +2,7 @@
 // @ts-nocheck
 import React, { useState } from 'react';
 import { useRouter } from 'next/router';
-import { apiLogin } from '../utils/api';
-import { setSession } from '../utils/auth';
+import { signIn } from '../utils/auth';
 
 const cardStyle: React.CSSProperties = {
   background: '#fff',
@@ -34,8 +33,7 @@ const LoginPage: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      const res = await apiLogin(email, password);
-      setSession(res.access_token, res.user, remember);
+      await signIn(email, password, remember);
       router.push('/');
     } catch (err: any) {
       setError(err?.message || 'Login failed');

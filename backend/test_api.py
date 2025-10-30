@@ -1,10 +1,11 @@
+import os
 import requests
 
 def test_create_case():
     url = "http://localhost:8000/cases"
-    files = {
-        'receipt_files': ('scanned-receipt-example.webp', open('scanned-receipt-example.webp', 'rb')),
-    }
+    here = os.path.dirname(__file__)
+    img_path = os.path.join(here, 'scanned-receipt-example.webp')
+    files = {'receipt_image': open(img_path, 'rb')}
     data = {
         'issue_description': 'The laptop I received is not working properly. It keeps shutting down randomly after 10 minutes of use.'
     }
