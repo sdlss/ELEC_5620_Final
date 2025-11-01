@@ -5,6 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { getToken } from '../utils/auth';
 
 type LastAnalysis = {
 	case_id?: string;
@@ -39,16 +40,38 @@ const IndexPage: React.FC = () => {
 		const [history, setHistory] = useState<HistoryItem[]>([]);
 		const router = useRouter();
 
+		// If user visits '/', redirect them to the login page only when not authenticated
+		useEffect(() => {
+			try {
+				const token = getToken();
+				if (!token && router && router.replace) {
+					router.replace('/login');
+				}
+			} catch {}
+		}, [router]);
+
 	useEffect(() => {
 		try {
 			const raw = localStorage.getItem('lastAnalysis');
 			if (raw) {
-				setLast(JSON.parse(raw));
+				try {
+					const parsed = JSON.parse(raw);
+					// Only accept persisted analyses that include a created_at timestamp
+					if (parsed && parsed.created_at) {
+						setLast(parsed);
+					}
+				} catch {}
 			}
 				const hraw = localStorage.getItem('analysisHistory');
 				if (hraw) {
-					const arr = JSON.parse(hraw);
-					if (Array.isArray(arr)) setHistory(arr);
+					try {
+						const arr = JSON.parse(hraw);
+						if (Array.isArray(arr)) {
+							// Only keep history items that look like real user uploads (have created_at)
+							const filtered = arr.filter((it: any) => it && it.created_at);
+							setHistory(filtered);
+						}
+					} catch {}
 				}
 		} catch {}
 		setLoaded(true);
@@ -61,6 +84,37 @@ const IndexPage: React.FC = () => {
 
 	const keyPoints = last?.analysis?.key_points ?? [];
 	const steps = last?.analysis?.steps ?? [];
+
+	// Helper: extract a leading JSON object from a string and return parsed + remainder
+	const extractLeadingJson = (s: string): { parsed: any | null; remainder: string | null } => {
+		if (!s || typeof s !== 'string') return { parsed: null, remainder: null };
+		const str = s.trim();
+		if (!str.startsWith('{')) return { parsed: null, remainder: str };
+		let depth = 0;
+		let inString = false;
+		let escape = false;
+		for (let i = 0; i < str.length; i++) {
+			const ch = str[i];
+			if (escape) { escape = false; continue; }
+			if (ch === '\\') { escape = true; continue; }
+			if (ch === '"') { inString = !inString; continue; }
+			if (inString) continue;
+			if (ch === '{') depth += 1;
+			if (ch === '}') depth -= 1;
+			if (depth === 0) {
+				const candidate = str.substring(0, i + 1);
+				try {
+					const parsed = JSON.parse(candidate);
+					const remainder = str.substring(i + 1).trim();
+					return { parsed, remainder: remainder.length ? remainder : null };
+				} catch (e) {
+					// continue
+				}
+			}
+		}
+		// fallback: try parse whole
+		try { return { parsed: JSON.parse(str), remainder: null }; } catch (e) { return { parsed: null, remainder: str }; }
+	};
 
 	// Status helpers: color mapping + optional progress
 	const lastStatus = last?.status || (last?.analysis ? 'Analyzed' : '—');
@@ -112,8 +166,11 @@ const IndexPage: React.FC = () => {
 		};
 
 		const clearHistory = () => {
+			// Remove stored history and also clear the last analysis to avoid stale UI
 			localStorage.removeItem('analysisHistory');
+			localStorage.removeItem('lastAnalysis');
 			setHistory([]);
+			setLast(null);
 		};
 
 	return (
@@ -192,20 +249,51 @@ const IndexPage: React.FC = () => {
 										<p style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{last.analysis.issue_description}</p>
 									</>
 								)}
-								{last?.analysis?.analysis && (
-									<>
-										<div style={{ color: '#6b7280', fontSize: 12, marginTop: 8 }}>Raw Analysis</div>
-										<p style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{last.analysis.analysis}</p>
-									</>
-								)}
-								{(steps.length > 0) && (
-									<>
-										<div style={{ color: '#6b7280', fontSize: 12, marginTop: 8 }}>Next Steps</div>
-										<ol style={{ marginTop: 4, paddingLeft: 18 }}>
-											{steps.slice(0,5).map((s, i) => <li key={i}>{s}</li>)}
-										</ol>
-									</>
-								)}
+								{last?.analysis?.analysis && (() => {
+									// Avoid rendering raw JSON-like content. Extract leading JSON if present and render human-friendly report.
+									const txt: string = last.analysis.analysis;
+									const extracted = extractLeadingJson(txt);
+									const parsed = extracted.parsed;
+									const remainder = extracted.remainder;
+									let displayText: string | null = null;
+									let localKeyPoints: string[] = last?.analysis?.key_points ?? [];
+									let localSteps: string[] = last?.analysis?.steps ?? [];
+									if (parsed && typeof parsed === 'object') {
+										displayText = remainder || parsed.analysis || parsed.summary || parsed.explanation || null;
+										if (Array.isArray(parsed.key_points) && parsed.key_points.length) localKeyPoints = parsed.key_points;
+										if (Array.isArray(parsed.steps) && parsed.steps.length) localSteps = parsed.steps;
+									} else {
+										// remove any {...} blocks to avoid showing raw JSON-looking text
+										const cleaned = txt.replace(/\{[\s\S]*?\}/g, '').trim();
+										displayText = cleaned || null;
+									}
+									return (
+										<>
+											{displayText && (
+												<>
+													<div style={{ color: '#6b7280', fontSize: 12, marginTop: 8 }}>Analysis</div>
+													<p style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{displayText}</p>
+												</>
+											)}
+											{(localSteps.length > 0) && (
+												<>
+													<div style={{ color: '#6b7280', fontSize: 12, marginTop: 8 }}>Next Steps</div>
+													<ol style={{ marginTop: 4, paddingLeft: 18 }}>
+														{localSteps.slice(0,5).map((s, i) => <li key={i}>{s}</li>)}
+													</ol>
+												</>
+											)}
+											{(localKeyPoints.length > 0) && (
+												<>
+													<div style={{ color: '#6b7280', fontSize: 12, marginTop: 8 }}>Key Points</div>
+													<ul style={{ marginTop: 4, paddingLeft: 18 }}>
+														{localKeyPoints.slice(0,5).map((k, i) => <li key={i}>{k}</li>)}
+													</ul>
+												</>
+											)}
+										</>
+									);
+								})()}
 							</div>
 						)}
 					</div>

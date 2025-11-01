@@ -4,7 +4,7 @@ Note: Minimal connectivity test using OPENAI_API_KEY.
 
 In .env, set:
     OPENAI_API_KEY=sk-...
-    # OPENAI_MODEL=gpt-40-mini
+    OPENAI_MODEL=gpt-4o-mini
 """
 
 import os
@@ -15,14 +15,15 @@ _PROJECT_ROOT = os.path.dirname(_CURRENT_DIR)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+import asyncio
 from backend.config import get_settings, get_chat_client
 
 
-def main():
+async def main():
     s = get_settings()
     print("[OpenAI model]", s.openai_model)
     client, model = get_chat_client()
-    resp = client.chat.completions.create(
+    resp = await client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
@@ -33,4 +34,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

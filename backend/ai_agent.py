@@ -7,7 +7,11 @@ and parse it with a safe fallback to plain text.
 
 from typing import Dict, Any, List
 import json
-from config import get_chat_client  # Changed from relative import
+import os
+try:
+	from .config import get_chat_client
+except Exception:
+	from config import get_chat_client
 
 
 
@@ -24,6 +28,8 @@ async def analyze_issue(issue_description: str) -> Dict[str, Any]:
 	- steps: List[str]
 	"""
 	client, model = get_chat_client()
+	# Ensure agent uses gpt-4o-mini by default unless explicitly overridden
+	model = os.getenv("OPENAI_MODEL", model or "gpt-4o-mini")
 
 	system_prompt = (
 		"You are an e-commerce after-sales dispute assistant. Based on the user's issue description, "
@@ -51,13 +57,17 @@ async def analyze_issue(issue_description: str) -> Dict[str, Any]:
 		)
 		content = resp.choices[0].message.content if resp.choices else ""
 	except Exception as e:
+		# Keep behavior simple: log and return a stable object below
 		print(f"OpenAI API error: {str(e)}")
 		content = ""
 
 	# Try to parse the JSON shape { key_points: [...], steps: [...] }
 	key_points: List[str] = []
 	steps: List[str] = []
+	analysis_summary = None
+
 	if content:
+		# First, if content looks like JSON, try to parse it
 		try:
 			parsed = json.loads(content)
 			if isinstance(parsed, dict):
@@ -67,14 +77,37 @@ async def analyze_issue(issue_description: str) -> Dict[str, Any]:
 					key_points = [str(x) for x in kp if isinstance(x, (str, int, float))]
 				if isinstance(st, list):
 					steps = [str(x) for x in st if isinstance(x, (str, int, float))]
+				# Build a short human-readable analysis summary from parsed fields
+				parts = []
+				if key_points:
+					parts.append("Key points: " + "; ".join(key_points))
+				if steps:
+					parts.append("Recommended steps: " + "; ".join(steps))
+				if parts:
+					analysis_summary = " \n".join(parts)
+				else:
+					# If parsed dict has other textual fields, try to use them
+					text_candidates = []
+					for k in ("analysis", "summary", "explanation"):
+						val = parsed.get(k)
+						if isinstance(val, str) and val.strip():
+							text_candidates.append(val.strip())
+					if text_candidates:
+						analysis_summary = "\n".join(text_candidates)
 		except Exception:
-			# Fallback: leave parsed fields empty and keep raw text in analysis
+			# Not JSON — fall through and treat content as plain text
 			pass
 
+	# If we couldn't derive a structured summary, use the raw content as analysis
+	if not analysis_summary:
+		analysis_summary = content or ""
+
+	# Always return a dict (normalized). Keep raw content for debugging under 'raw'.
 	return {
 		"model": model,
 		"issue_description": issue_description,
-		"analysis": content,
+		"analysis": analysis_summary,
+		"raw": content,
 		"key_points": key_points,
 		"steps": steps,
 	}

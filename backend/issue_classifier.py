@@ -1,7 +1,12 @@
 import os
 import json
 from typing import Dict, Any
-from config import get_chat_client
+
+# Prefer package-relative import when running as a module; fall back to top-level for tests/scripts
+try:
+    from .config import get_chat_client
+except Exception:
+    from config import get_chat_client
 
 async def classify_issue(issue_description: str) -> Dict[str, Any]:
     """

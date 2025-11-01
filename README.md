@@ -41,7 +41,7 @@ start.bat                       # Windows 一键启动后端（可选）
    - 在仓库根目录创建 `.env`，内容示例：
 
      OPENAI_API_KEY=sk-xxxx
-     OPENAI_MODEL=gpt-5-nano
+     OPENAI_MODEL=gpt-4o-mini
 
 3) 验证 OpenAI 连通性（可选）
    - 运行测试脚本：
@@ -338,15 +338,26 @@ npm run dev
    - Rotate your API key immediately if it’s leaked
 
 
+   ## Workflow
+   1. Start backend service
+   2. start frontend service:
+      - login page
+      - index page (create new case)
+      - upload receipt, description
+      - ocr, issue classification, analysis report (completed by backend service)
+      - result page
 
-  ## Recover after unzip
-  - cd D:\Desktop\ELEC_5620_Final
-  - py -3 -m venv .venv
-  - .venv\Scripts\activate
-  - pip install -r backend\requirements.txt
-  - D:\anaconda\Scripts\conda.exe run -p d:\Desktop\ELEC_5620_Final\.conda --no-capture-output uvicorn backend.main:app --host 127.0.0.1 --port 8000
+   ## Recover after unzip
+   - cd D:\Desktop\ELEC_5620_Final
+   - py -3 -m venv .venv
+   - .venv\Scripts\activate
+   - pip install -r backend\requirements.txt
+   -  Create the backend .env file (put the following information in this file)
+      OPENAI_API_KEY=sk-xxxx
+      OPENAI_MODEL=gpt-4o-mini
+   - D:\anaconda\Scripts\conda.exe run -p d:\Desktop\ELEC_5620_Final\.conda --no-capture-output uvicorn backend.main:app --host 127.0.0.1 --port 8000 // replace the file path with your own (run this command to start your backend service)
 
-  - cd D:\Desktop\ELEC_5620_Final\frontend
-  - npm install
-  - create .env.local file : NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
-  - npm run dev
+   - cd D:\Desktop\ELEC_5620_Final\frontend
+   - npm install
+   - create .env.local file : NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+   - npm run dev

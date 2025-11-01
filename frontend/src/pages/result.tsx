@@ -65,16 +65,7 @@ const ResultPage: React.FC = () => {
 						<h1 style={{ margin: 0 }}>Refund Handling Report</h1>
 						<p style={{ color: '#6b7280', margin: '4px 0 0' }}>AI-generated case summary, decision and suggestions.</p>
 					</div>
-					<div style={{ display: 'flex', gap: 8 }}>
-						<Link href="/" style={{
-							background: '#f3f4f6', color: '#111827', padding: '10px 12px', borderRadius: 8,
-							textDecoration: 'none', border: '1px solid #e5e7eb', fontWeight: 600
-						}}>← Back to Dashboard</Link>
-						<Link href="/upload" style={{
-							background: '#111827', color: '#fff', padding: '10px 12px', borderRadius: 8,
-							textDecoration: 'none', border: '1px solid #111827', fontWeight: 600
-						}}>+ New Upload</Link>
-					</div>
+					<div />
 				</div>
 			{!hasData && (
 				<>
@@ -152,38 +143,76 @@ const ResultPage: React.FC = () => {
 					{/* Reason: now show AI Agent final report */}
 					<div style={{ ...card, marginTop: 16 }}>
 						<h3 style={{ marginTop: 0 }}>Reason</h3>
-						{finalReport?.analysis ? (
-							<>
-								<p style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{finalReport.analysis}</p>
-								{Array.isArray(finalReport.key_points) && finalReport.key_points.length > 0 && (
-									<>
-										<h4>Key Points</h4>
-										<ul style={{ marginTop: 6 }}>
-											{finalReport.key_points.map((k: string, i: number) => <li key={i}>{k}</li>)}
-										</ul>
-									</>
-								)}
-								{Array.isArray(finalReport.steps) && finalReport.steps.length > 0 && (
-									<>
-										<h4>Recommended Steps</h4>
-										<ol style={{ marginTop: 6 }}>
-											{finalReport.steps.map((s: string, i: number) => <li key={i}>{s}</li>)}
-										</ol>
-									</>
-								)}
-							</>
-						) : (
-							<p style={{ color: '#6b7280' }}>No AI report available.</p>
-						)}
+										{(() => {
+											// Normalize final report display: prefer human-readable fields and hide raw JSON
+											if (!finalReport) return <p style={{ color: '#6b7280' }}>No AI report available.</p>;
+											// Determine if finalReport is a string containing JSON
+											let parsed: any = null;
+											if (typeof finalReport === 'string') {
+												try {
+													parsed = JSON.parse(finalReport);
+												} catch (e) {
+													// plain text
+													return <p style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{finalReport}</p>;
+												}
+											} else if (typeof finalReport === 'object') {
+												parsed = finalReport;
+											}
+											// If parsed is object, show human-friendly fields only (no raw JSON)
+											if (parsed && typeof parsed === 'object') {
+												// Prefer an explicit analysis/summary field if present
+												const analysisField = parsed.analysis || parsed.summary || parsed.explanation || null;
+												return (
+													<>
+														{analysisField ? <p style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{analysisField}</p> : <p style={{ color: '#6b7280' }}>AI returned structured analysis. See key points and recommended steps below.</p>}
+														{Array.isArray(parsed.key_points) && parsed.key_points.length > 0 && (
+															<>
+																<h4>Key Points</h4>
+																<ul style={{ marginTop: 6 }}>
+																	{parsed.key_points.map((k: string, i: number) => <li key={i}>{k}</li>)}
+																</ul>
+															</>
+														)}
+														{Array.isArray(parsed.steps) && parsed.steps.length > 0 && (
+															<>
+																<h4>Recommended Steps</h4>
+																<ol style={{ marginTop: 6 }}>
+																	{parsed.steps.map((s: string, i: number) => <li key={i}>{s}</li>)}
+																</ol>
+															</>
+														)}
+													</>
+												);
+											}
+											// Fallback: if we couldn't parse and didn't return earlier, show minimal message
+											return <p style={{ color: '#6b7280' }}>AI returned an unrecognized format.</p>;
+										})()}
 					</div>
 
 					{/* Classification (optional, if backend provided) */}
 					{report?.classification && (
 						<div style={{ ...card, marginTop: 16 }}>
 							<h3 style={{ marginTop: 0 }}>Issue Classification</h3>
-							<pre style={{ whiteSpace: 'pre-wrap', background: '#f8f9fb', padding: 12, borderRadius: 8, marginTop: 8 }}>
-								{JSON.stringify(report.classification, null, 2)}
-							</pre>
+							{/* Render classification in a human-friendly form instead of raw JSON */}
+							<div style={{ marginTop: 8 }}>
+								<div><strong>Category:</strong> {report.classification.category ?? '—'}</div>
+								{report.classification.reason ? <div style={{ marginTop: 6 }}><strong>Reason:</strong> {report.classification.reason}</div> : null}
+								{typeof report.classification.requires_manual_review !== 'undefined' && (
+									<div style={{ marginTop: 6 }}><strong>Requires manual review:</strong> {report.classification.requires_manual_review ? 'Yes' : 'No'}</div>
+								)}
+								{typeof report.classification.confidence_score !== 'undefined' && (
+									<div style={{ marginTop: 6 }}><strong>Confidence:</strong> {Number(report.classification.confidence_score).toFixed(2)}</div>
+								)}
+								{Array.isArray(report.classification.keywords) && report.classification.keywords.length > 0 && (
+									<div style={{ marginTop: 6 }}>
+										<strong>Keywords:</strong>
+										<ul style={{ marginTop: 6 }}>
+											{report.classification.keywords.map((k: string, i: number) => <li key={i}>{k}</li>)}
+										</ul>
+									</div>
+								)}
+								{report.classification.model_used ? <div style={{ marginTop: 6 }}><strong>Model:</strong> {report.classification.model_used}</div> : null}
+							</div>
 						</div>
 					)}
 

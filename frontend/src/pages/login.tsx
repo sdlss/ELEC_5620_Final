@@ -32,9 +32,10 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    try {
-      await signIn(email, password, remember);
-      router.push('/');
+  try {
+  await signIn(email, password, remember);
+  // redirect to dashboard and replace history so back doesn't return to login
+  router.replace('/');
     } catch (err: any) {
       setError(err?.message || 'Login failed');
     } finally {

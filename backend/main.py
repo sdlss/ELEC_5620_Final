@@ -6,6 +6,12 @@ import json
 from typing import Optional
 from typing import Dict, Any, List
 from dotenv import load_dotenv
+# Use package-relative import so module works when run as `backend.main`
+try:
+    from .config import get_chat_client
+except Exception:
+    # Fallback for direct script execution
+    from config import get_chat_client
 from datetime import datetime
 import uuid
 
@@ -75,8 +81,7 @@ class EligibilityResponse(BaseModel):
     model: str
 
 
-def generate_rationale_with_fallback(payload: dict) -> tuple[bool, str, str]:
-    api_key = os.getenv("OPENAI_API_KEY")
+async def generate_rationale_with_fallback(payload: dict) -> tuple[bool, str, str]:
     debug_errors = (os.getenv("ELIGIBILITY_DEBUG_ERRORS", "").lower() in {"1", "true", "yes"})
 
     # Simple rule-based fallback
@@ -101,11 +106,13 @@ def generate_rationale_with_fallback(payload: dict) -> tuple[bool, str, str]:
             reasons.append("Applied default policy rules due to limited data.")
         return eligible, " ".join(reasons), "heuristic"
 
-    if not api_key or OpenAI is None:
+    # Try to obtain an async chat client from config. If unavailable, fall back to heuristic.
+    try:
+        client, _ = get_chat_client()
+    except Exception:
         return heuristic()
 
     try:
-        client = OpenAI(api_key=api_key)
         system = (
             "You are an eligibility adjudicator. Decide if a purchase is eligible "
             "for reimbursement based on general corporate expense policies. "
@@ -117,9 +124,9 @@ def generate_rationale_with_fallback(payload: dict) -> tuple[bool, str, str]:
         )
 
         # Use responses API; fallback to chat.completions if needed
+        model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         try:
-            model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            completion = client.chat.completions.create(
+            completion = await client.chat.completions.create(
                 model=model_name,
                 messages=[
                     {"role": "system", "content": system},
@@ -137,7 +144,7 @@ def generate_rationale_with_fallback(payload: dict) -> tuple[bool, str, str]:
             # Try a safer fallback model once before heuristic
             try:
                 fallback_model = "gpt-4o-mini"
-                completion = client.chat.completions.create(
+                completion = await client.chat.completions.create(
                     model=fallback_model,
                     messages=[
                         {"role": "system", "content": system},
@@ -218,7 +225,7 @@ def root():
 
 
 @app.post("/api/eligibility/check", response_model=EligibilityResponse)
-def check_eligibility(req: EligibilityRequest):
+async def check_eligibility(req: EligibilityRequest):
     # Start with the incoming request as a mutable dict
     payload: Dict[str, Any] = req.dict()
 
@@ -272,7 +279,7 @@ def check_eligibility(req: EligibilityRequest):
         # Parsing is best-effort; silently continue with original payload on error
         pass
 
-    eligible, reason, model_name = generate_rationale_with_fallback(payload)
+    eligible, reason, model_name = await generate_rationale_with_fallback(payload)
     return EligibilityResponse(eligible=eligible, reason=reason, model=model_name)
 
 
@@ -442,26 +449,47 @@ async def analyze_receipt(
             classification = {"error": str(e)}
 
         # 2) Eligibility check second (reuse existing logic)
-        eligible, reason, model_name = generate_rationale_with_fallback(consolidated)
+        eligible, reason, model_name = await generate_rationale_with_fallback(consolidated)
 
         # 3) Final handling report via AI agent (optional, reuse existing analyzer)
         final_report = None
         try:
             if analyze_issue is not None:
-                # Provide the agent with all context to produce a concise handling plan
-                summary_lines: List[str] = []
-                if issue_description:
-                    summary_lines.append(f"Issue: {issue_description}")
-                if classification and isinstance(classification, dict) and classification.get("category"):
-                    summary_lines.append(
-                        f"Classification: {classification.get('category')} (reason: {classification.get('reason')})"
-                    )
-                elig_txt = f"Eligibility: {'eligible' if eligible else 'not eligible'} (reason: {reason})"
-                summary_lines.append(elig_txt)
-                combined = "\n".join(summary_lines)
-                final_report = await analyze_issue(combined)
+                # Build a comprehensive context for the agent including OCR summary, classification and eligibility
+                agent_payload = {
+                    "issue_description": issue_description,
+                    "classification": classification,
+                    "eligibility": {"eligible": eligible, "reason": reason, "model": model_name},
+                    "receipt_summary": consolidated,
+                }
+                # Provide a compact string to the agent
+                combined = (
+                    f"Issue: {issue_description or ''}\n"
+                    f"Classification: {json.dumps(classification, ensure_ascii=False)}\n"
+                    f"Eligibility: {'eligible' if eligible else 'not eligible'}; reason={reason}\n"
+                    f"Receipt summary: {json.dumps(consolidated, ensure_ascii=False)}"
+                )
+                # Call the analyzer and normalize its return value to a dict with an 'analysis' field
+                try:
+                    resp = await analyze_issue(combined)
+                    if isinstance(resp, str):
+                        final_report = {"analysis": resp}
+                    elif isinstance(resp, dict):
+                        # Ensure at minimum 'analysis' exists (may be raw text or structured)
+                        if "analysis" not in resp:
+                            # try to synthesize a readable analysis
+                            resp_text = resp.get("analysis") or json.dumps(resp, ensure_ascii=False)
+                            resp["analysis"] = resp_text
+                        final_report = resp
+                    else:
+                        final_report = {"analysis": str(resp)}
+                except Exception as e:
+                    final_report = {"error": str(e), "analysis": ""}
+            else:
+                final_report = {"analysis": ""}
         except Exception as e:
-            final_report = {"error": str(e)}
+            # Catch any unexpected error when preparing the agent call
+            final_report = {"error": str(e), "analysis": ""}
 
         return {
             "ok": True,
