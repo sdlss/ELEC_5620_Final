@@ -1,4 +1,0 @@
-# communication.txt
-# Placeholder for a prompt template that generates communication scripts for vendors/platforms.
-# Purpose: Given identified issues and policy references, generate polite and effective messages.
-# Note: This file currently contains comments only and no actual prompt content.

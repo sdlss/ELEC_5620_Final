@@ -1,4 +1,0 @@
-# policy_check.txt
-# Placeholder for a prompt template comparing issues against platform policies/laws.
-# Purpose: Match applicable policies or legal clauses and provide justification and recommendations.
-# Note: This file currently contains comments only and no actual prompt content.
