@@ -52,11 +52,14 @@
 
    ## Recover after unzip
    - cd D:\Desktop\ELEC_5620_Final (replace with your own file path) 
-   - D:\anaconda\Scripts\conda.exe run -p D:\Desktop\ELEC_5620_Final\.conda --no-capture-output python -m pip install -r D:\Desktop\ELEC_5620_Final\backend\requirements.txt (replace with your own file path)
+   -  python -m venv .venv
+   - .venv\Scripts\activate
+   -  pip install -r backend\requirements.txt (replace with your own file path)
    -  Create the backend .env file (put the following information in this file)
       OPENAI_API_KEY=sk-xxxx
       OPENAI_MODEL=gpt-4o-mini
-   - D:\anaconda\Scripts\conda.exe run -p d:\Desktop\ELEC_5620_Final\.conda --no-capture-output uvicorn backend.main:app --host 127.0.0.1 --port 8000 // replace the file path with your own (run this command to start your backend service)
+      DATABASE_URL=postgresql://postgres:root@localhost:5432/final5620 (change your own root)
+   - python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000n (run this command to start your backend service)
 
    - cd D:\Desktop\ELEC_5620_Final\frontend (replace with your own file path)
    - npm install
