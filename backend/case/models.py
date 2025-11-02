@@ -1,7 +1,11 @@
 from sqlalchemy import Column, BigInteger, Integer, Text, Boolean, DateTime, Date, Numeric, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from database import Base
+# Support both package and script imports
+try:
+    from .database import Base  # type: ignore
+except Exception:
+    from database import Base  # type: ignore
 
 class AppUser(Base):
     __tablename__ = "app_user"
@@ -23,18 +27,7 @@ class Case(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     user = relationship("AppUser")
 
-class Receipt(Base):
-    __tablename__ = "receipt"
-    id = Column(BigInteger, primary_key=True)
-    case_id = Column(BigInteger, ForeignKey("case.id", ondelete="CASCADE"), nullable=False)
-    file_url = Column(Text, nullable=False)
-    purchase_date = Column(Date)
-    seller = Column(Text)
-    currency = Column(Text)
-    total_amount = Column(Numeric(12,2))
-    ocr_confidence = Column(Numeric(5,2))
-    raw_ocr = Column(JSON)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+"""Receipt model removed per requirement: we no longer persist receipts in DB."""
 
 class Issue(Base):
     __tablename__ = "issue"

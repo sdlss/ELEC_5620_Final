@@ -14,6 +14,11 @@ except Exception:
     from config import get_chat_client
 from datetime import datetime
 import uuid
+import base64
+try:
+    import bcrypt  # password hashing for auth
+except Exception:
+    bcrypt = None  # type: ignore
 
 # Reuse existing OCR parser to enrich payload when only rawText is provided
 try:
@@ -206,12 +211,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ensure .env is loaded even when main is entrypoint (eligibility-only path)
+# Ensure .env is loaded even when main is entrypoint
 _HERE = os.path.dirname(__file__)
-load_dotenv()  # load default .env if present in CWD
+# Authoritative env for backend: backend/.env
 _BACKEND_ENV = os.path.join(_HERE, ".env")
 if os.path.exists(_BACKEND_ENV):
-    load_dotenv(_BACKEND_ENV, override=False)
+    load_dotenv(_BACKEND_ENV, override=True)
+# Optionally load repo root .env but do not override backend/.env values
+load_dotenv(override=False)
 
 
 @app.get("/")
@@ -320,6 +327,76 @@ def _render_pdf_pages_to_images(pdf_path: str) -> List[str]:
     return out_paths
 
 
+# --- Simple DB-backed auth (email/password against app_user) ---
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _get_db_session():
+    # Import here to avoid hard dependency when DB not used
+    try:
+        from .case.database import SessionLocal as _SessionLocal  # type: ignore
+    except Exception:
+        try:
+            from case.database import SessionLocal as _SessionLocal  # type: ignore
+        except Exception:
+            _SessionLocal = None  # type: ignore
+    if _SessionLocal is None:
+        raise HTTPException(status_code=500, detail="Database is not configured on server")
+    return _SessionLocal()
+
+
+def _find_user_by_email(db, email: str):
+    try:
+        from .case import models as case_models  # type: ignore
+    except Exception:
+        from case import models as case_models  # type: ignore
+    return db.query(case_models.AppUser).filter(case_models.AppUser.email == email).first()
+
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginRequest):
+    if bcrypt is None:
+        raise HTTPException(status_code=500, detail="bcrypt not installed on server")
+    email = (req.email or "").strip()
+    password = (req.password or "").strip()
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="email and password are required")
+
+    db = _get_db_session()
+    try:
+        user = _find_user_by_email(db, email)
+        if not user:
+            raise HTTPException(status_code=401, detail="invalid credentials")
+        try:
+            stored = (getattr(user, "password_hash", None) or "").encode("utf-8")
+            if not stored or not bcrypt.checkpw(password.encode("utf-8"), stored):
+                raise HTTPException(status_code=401, detail="invalid credentials")
+        except HTTPException:
+            raise
+        except Exception:
+            # Avoid leaking details
+            raise HTTPException(status_code=401, detail="invalid credentials")
+
+        # Minimal opaque token (base64). For production use JWT with signing.
+        token = base64.b64encode(f"{email}:{int(datetime.utcnow().timestamp())}".encode("utf-8")).decode("utf-8")
+        return {
+            "ok": True,
+            "token": token,
+            "user": {
+                "id": getattr(user, "id", None),
+                "email": getattr(user, "email", None),
+                "role": getattr(user, "role", None),
+            },
+        }
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
 @app.post("/api/receipt/analyze")
 async def analyze_receipt(
     receipt_files: List[UploadFile] = File(..., description="Receipt images or PDFs"),
@@ -328,6 +405,8 @@ async def analyze_receipt(
         None,
         description="Optional; leave empty and the server will auto-generate a case ID.",
     ),
+    store: Optional[bool] = Form(False, description="If true, persist results into DB"),
+    user_email: Optional[str] = Form(None, description="When store=true, email of AppUser to own the case"),
 ):
     """
     Accept receipt images/PDFs, run OCR + basic parsing using existing utilities,
@@ -491,6 +570,30 @@ async def analyze_receipt(
             # Catch any unexpected error when preparing the agent call
             final_report = {"error": str(e), "analysis": ""}
 
+        # Optionally persist to database
+        persisted: Dict[str, Any] | None = None
+        if store:
+            if not user_email:
+                raise HTTPException(status_code=400, detail="user_email is required when store=true")
+            try:
+                persisted = _persist_analysis_to_db(
+                    user_email=user_email,
+                    title=(consolidated.get("item") or "Receipt Analysis"),
+                    issue_description=issue_description,
+                    classification=classification,
+                    eligibility={"eligible": eligible, "reason": reason, "model": model_name},
+                    final_report=final_report,
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                # Do not fail the whole request if persistence fails
+                try:
+                    print(f"[persist] error: {e}")
+                except Exception:
+                    pass
+                persisted = {"error": str(e)}
+
         return {
             "ok": True,
             "case_id": case_id_normalized,
@@ -504,6 +607,7 @@ async def analyze_receipt(
             },
             "final_report": final_report,
             "receipts": per_file_results,
+            **({"db": persisted} if persisted is not None else {}),
         }
     finally:
         # Clean up only the temp PDFs; keep page images if they are the same temp path
@@ -513,5 +617,108 @@ async def analyze_receipt(
                     os.unlink(p)
             except Exception:
                 pass
+
+
+def _persist_analysis_to_db(
+    user_email: str,
+    title: Optional[str],
+    issue_description: Optional[str],
+    classification: Any,
+    eligibility: Dict[str, Any],
+    final_report: Any,
+) -> Dict[str, Any]:
+    """
+    Create Case, Issue, and EligibilityDecision rows for this analysis.
+    Returns inserted DB IDs. Requires that AppUser(email=user_email) exists.
+    """
+    db = _get_db_session()
+    try:
+        # Import models
+        try:
+            from .case import models as case_models  # type: ignore
+        except Exception:
+            from case import models as case_models  # type: ignore
+
+        # Find user
+        user = db.query(case_models.AppUser).filter(case_models.AppUser.email == user_email).first()
+        if not user:
+            raise HTTPException(status_code=400, detail="AppUser not found for given user_email")
+
+        # Prepare fields
+        from datetime import datetime as _dt
+        now = _dt.utcnow()
+        case = case_models.Case(
+            user_id=getattr(user, "id"),
+            status="analysis_completed",
+            title=(title or "Receipt Analysis"),
+            latest_summary=(
+                (final_report or {}).get("analysis")
+                if isinstance(final_report, dict)
+                else (str(final_report) if final_report is not None else None)
+            ),
+            needs_review=False,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(case)
+        db.flush()  # get case.id
+
+        # Issue row
+        clf_category = None
+        clf_conf = None
+        annotations = None
+        if isinstance(classification, dict):
+            annotations = classification
+            clf_category = classification.get("category") or classification.get("type")
+            try:
+                cval = classification.get("confidence")
+                if cval is not None:
+                    clf_conf = float(cval)
+            except Exception:
+                clf_conf = None
+
+        issue = case_models.Issue(
+            case_id=getattr(case, "id"),
+            description=(issue_description or (title or "")) or "",
+            classification=(clf_category or None),
+            clf_confidence=clf_conf,
+            ai_annotations=annotations,
+            created_at=now,
+        )
+        db.add(issue)
+
+        # EligibilityDecision row
+        status_txt = "eligible" if bool(eligibility.get("eligible")) else "ineligible"
+        rationale_txt = str(eligibility.get("reason") or "")
+        decision = case_models.EligibilityDecision(
+            case_id=getattr(case, "id"),
+            policy_snapshot_id=None,
+            status=status_txt,
+            rationale=rationale_txt,
+            lenient_flag=False,
+            decided_at=now,
+        )
+        db.add(decision)
+
+        db.commit()
+        try:
+            db.refresh(case)
+            db.refresh(issue)
+            db.refresh(decision)
+        except Exception:
+            pass
+        return {
+            "case_id": getattr(case, "id", None),
+            "issue_id": getattr(issue, "id", None),
+            "eligibility_decision_id": getattr(decision, "id", None),
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
 
 

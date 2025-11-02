@@ -5,35 +5,43 @@ export type AuthUser = { email: string };
 const TOKEN_KEY = 'auth.token';
 const USER_KEY = 'auth.user';
 
-export function signIn(
+const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
+export async function signIn(
   email: string,
   password: string,
   remember = true
 ): Promise<{ token: string; user: AuthUser }> {
-  return new Promise((resolve, reject) => {
-    // Very basic client-side check; replace with real API later
-    const e = (email || '').trim();
-    const p = (password || '').trim();
-    if (!e || !p) {
-      reject(new Error('Email and password are required'));
-      return;
-    }
-    // Fake token: base64(email:timestamp)
-    const token = btoa(`${e}:${Date.now()}`);
-    const user: AuthUser = { email: e };
+  const e = (email || '').trim();
+  const p = (password || '').trim();
+  if (!e || !p) throw new Error('Email and password are required');
 
-    try {
-      if (remember) {
-        localStorage.setItem(TOKEN_KEY, token);
-        localStorage.setItem(USER_KEY, JSON.stringify(user));
-      } else {
-        sessionStorage.setItem(TOKEN_KEY, token);
-        sessionStorage.setItem(USER_KEY, JSON.stringify(user));
-      }
-    } catch {}
-
-    resolve({ token, user });
+  // Call backend to verify against database
+  const res = await fetch(`${baseURL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: e, password: p })
   });
+  if (!res.ok) {
+    let msg = 'Login failed';
+    try { const j = await res.json(); msg = j?.detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  const token = data?.token as string;
+  const user = (data?.user as AuthUser) || { email: e };
+  if (!token) throw new Error('Invalid server response');
+
+  try {
+    if (remember) {
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } else {
+      sessionStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+    }
+  } catch {}
+  return { token, user };
 }
 
 export function signOut() {

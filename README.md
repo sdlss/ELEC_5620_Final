@@ -62,3 +62,12 @@
    - npm install
    - create .env.local file : NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
    - npm run dev
+   - login information: 123@163.com   password:123456   
+
+    ## Database-backed login (optional but recommended)
+    - Import schema if not already done: run the SQL in `final5620.sql` into your PostgreSQL database.
+    - Ensure your backend has access to the DB via `DATABASE_URL` in `.env` (either repo root or `backend/.env`).
+    - Create a user in `app_user` using the helper:
+       - D:\anaconda\Scripts\conda.exe run -p D:\Desktop\ELEC_5620_Final\.conda --no-capture-output python -m backend.create_user --email you@example.com --password YourPass123 --role consumer
+    - In the frontend, open `http://127.0.0.1:3000/login`, sign in with the email/password above.
+    - On success, you'll be redirected to the dashboard with a stored token.

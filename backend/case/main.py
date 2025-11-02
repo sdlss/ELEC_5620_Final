@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 # from backend.database import Base, engine, get_db
 # from backend import models, schemas
 
@@ -8,14 +9,14 @@ import models, schemas
 
 app = FastAPI(title="ELEC-5620 Minimal Backend")
 
-# 如果你想用 ORM 自动建表（仅开发期使用；正式用SQL脚本）
+# If you want to create tables via ORM (dev only; use SQL scripts in production)
 Base.metadata.create_all(bind=engine)
 
 @app.get("/health")
 def health():
     return {"ok": True}
 
-# 1) 新建工单（最小闭环：设置为 new）
+# 1) Create a new case (minimal flow: set status='new')
 @app.post("/cases")
 def create_case(payload: schemas.CaseCreate, db: Session = Depends(get_db)):
     case = models.Case(user_id=payload.user_id, status="new",
@@ -23,17 +24,19 @@ def create_case(payload: schemas.CaseCreate, db: Session = Depends(get_db)):
     db.add(case); db.commit(); db.refresh(case)
     return {"case_id": case.id, "status": case.status}
 
-# 2) 录入收据信息（可与上传服务解耦；这里只存元数据）
+# 2) Record receipt info (decoupled from upload service; store metadata only)
 @app.post("/receipts")
 def add_receipt(payload: schemas.ReceiptCreate, db: Session = Depends(get_db)):
-    # 简单校验：工单存在
+    # Simple validation: case exists
     if not db.get(models.Case, payload.case_id):
         raise HTTPException(404, "case not found")
-    r = models.Receipt(**payload.dict())
+    if not hasattr(models, "Receipt"):
+        raise HTTPException(501, "Receipt model is not available")
+    r = models.Receipt(**payload.dict())  # type: ignore[attr-defined]
     db.add(r); db.commit(); db.refresh(r)
     return {"receipt_id": r.id}
 
-# 3) 记录问题与分类
+# 3) Record issue and classification
 @app.post("/issues")
 def add_issue(payload: schemas.IssueCreate, db: Session = Depends(get_db)):
     if not db.get(models.Case, payload.case_id):
@@ -42,13 +45,13 @@ def add_issue(payload: schemas.IssueCreate, db: Session = Depends(get_db)):
     db.add(i); db.commit(); db.refresh(i)
     return {"issue_id": i.id}
 
-# 4) 资格判定（同时同步 Case 状态 —— 由数据库触发器完成）
+# 4) Eligibility decision (Case status is synced by DB trigger)
 @app.post("/eligibility")
 def add_eligibility(payload: schemas.EligibilityCreate, db: Session = Depends(get_db)):
     if not db.get(models.Case, payload.case_id):
         raise HTTPException(404, "case not found")
 
-    # 可选：新建或复用 policy_snapshot
+    # Optional: create or reuse policy_snapshot
     ps_id = None
     if payload.policy_name and payload.policy_source:
         ps = models.PolicySnapshot(name=payload.policy_name,
@@ -62,14 +65,13 @@ def add_eligibility(payload: schemas.EligibilityCreate, db: Session = Depends(ge
                                     status=payload.status,
                                     rationale=payload.rationale)
     db.add(ed); db.commit(); db.refresh(ed)
-    # 由于触发器，CASE.status 已被刷新
+    # CASE.status has been updated by trigger
     current_case = db.get(models.Case, payload.case_id)
-    return {"eligibility_id": ed.id, "case_status": current_case.status}
+    case_status = getattr(current_case, "status", None)
+    return {"eligibility_id": ed.id, "case_status": case_status}
 
-# 5) 仪表盘：直接查视图
+# 5) Dashboard: query view directly
 @app.get("/dashboard/overview")
 def dashboard_overview(db: Session = Depends(get_db)):
-    rows = db.execute("""
-        SELECT * FROM v_case_overview ORDER BY case_id DESC
-    """).mappings().all()
+    rows = db.execute(text("SELECT * FROM v_case_overview ORDER BY case_id DESC")).mappings().all()
     return {"items": [dict(r) for r in rows]}

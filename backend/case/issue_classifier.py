@@ -1,15 +1,15 @@
 # issue_classifier.py
 def classify_issue(text: str) -> dict:
-    # 简单规则分类（演示）
+    # Simple rule-based classification (demo)
     lower = (text or "").lower()
     if "not received" in lower or "missing" in lower:
-        label = "物流未送达"
+        label = "Not delivered"
     elif "broken" in lower or "damage" in lower:
-        label = "破损/质量问题"
+        label = "Damaged/Quality issue"
     elif "fake" in lower or "counterfeit" in lower:
-        label = "疑似假货"
+        label = "Suspected counterfeit"
     elif "refund" in lower or "return" in lower:
-        label = "退货退款"
+        label = "Return/Refund"
     else:
-        label = "其他"
+        label = "Other"
     return {"label": label, "confidence": 0.85, "model": "demo-rule-based"}

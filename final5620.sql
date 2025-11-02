@@ -276,36 +276,12 @@ ALTER SEQUENCE public.policy_snapshot_id_seq OWNED BY public.policy_snapshot.id;
 -- Name: receipt; Type: TABLE; Schema: public; Owner: postgres
 --
 
-CREATE TABLE public.receipt (
-    id bigint NOT NULL,
-    case_id bigint NOT NULL,
-    file_url text NOT NULL,
-    purchase_date date,
-    seller text,
-    currency text,
-    total_amount numeric(12,2),
-    ocr_confidence numeric(5,2),
-    raw_ocr jsonb,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-
-ALTER TABLE public.receipt OWNER TO postgres;
 
 --
 -- TOC entry 219 (class 1259 OID 25110)
 -- Name: receipt_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
-CREATE SEQUENCE public.receipt_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE public.receipt_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 5007 (class 0 OID 0)
@@ -313,7 +289,7 @@ ALTER SEQUENCE public.receipt_id_seq OWNER TO postgres;
 -- Name: receipt_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
-ALTER SEQUENCE public.receipt_id_seq OWNED BY public.receipt.id;
+-- Receipt table removed
 
 
 --
@@ -375,37 +351,19 @@ CREATE VIEW public.v_case_overview AS
     c.updated_at,
     ed.status AS eligibility_status,
     ed.lenient_flag,
-    ed.decided_at,
-    r.id AS receipt_id,
-    r.purchase_date,
-    r.seller,
-    r.total_amount
-   FROM ((public."case" c
+    ed.decided_at
+   FROM (public."case" c
      LEFT JOIN LATERAL ( SELECT e.id,
-            e.case_id,
-            e.policy_snapshot_id,
-            e.status,
-            e.rationale,
-            e.lenient_flag,
-            e.decided_at
-           FROM public.eligibility_decision e
-          WHERE (e.case_id = c.id)
-          ORDER BY e.decided_at DESC
-         LIMIT 1) ed ON (true))
-     LEFT JOIN LATERAL ( SELECT r_1.id,
-            r_1.case_id,
-            r_1.file_url,
-            r_1.purchase_date,
-            r_1.seller,
-            r_1.currency,
-            r_1.total_amount,
-            r_1.ocr_confidence,
-            r_1.raw_ocr,
-            r_1.created_at
-           FROM public.receipt r_1
-          WHERE (r_1.case_id = c.id)
-          ORDER BY r_1.id
-         LIMIT 1) r ON (true));
+         e.case_id,
+         e.policy_snapshot_id,
+         e.status,
+         e.rationale,
+         e.lenient_flag,
+         e.decided_at
+        FROM public.eligibility_decision e
+       WHERE (e.case_id = c.id)
+       ORDER BY e.decided_at DESC
+      LIMIT 1) ed ON (true));
 
 
 ALTER VIEW public.v_case_overview OWNER TO postgres;
@@ -497,7 +455,7 @@ ALTER TABLE ONLY public.policy_snapshot ALTER COLUMN id SET DEFAULT nextval('pub
 -- Name: receipt id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.receipt ALTER COLUMN id SET DEFAULT nextval('public.receipt_id_seq'::regclass);
+-- removed: receipt default id
 
 
 --
@@ -572,8 +530,7 @@ COPY public.policy_snapshot (id, name, source, matched_rules, captured_at) FROM 
 -- Data for Name: receipt; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.receipt (id, case_id, file_url, purchase_date, seller, currency, total_amount, ocr_confidence, raw_ocr, created_at) FROM stdin;
-\.
+-- removed: receipt data
 
 
 --
@@ -647,7 +604,7 @@ SELECT pg_catalog.setval('public.policy_snapshot_id_seq', 1, false);
 -- Name: receipt_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.receipt_id_seq', 1, false);
+-- removed: receipt sequence setval
 
 
 --
@@ -727,8 +684,7 @@ ALTER TABLE ONLY public.policy_snapshot
 -- Name: receipt receipt_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.receipt
-    ADD CONSTRAINT receipt_pkey PRIMARY KEY (id);
+-- removed: receipt primary key
 
 
 --
@@ -802,7 +758,7 @@ CREATE INDEX idx_issue_case ON public.issue USING btree (case_id);
 -- Name: idx_receipt_case; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_receipt_case ON public.receipt USING btree (case_id);
+-- removed: idx_receipt_case
 
 
 --
@@ -878,8 +834,7 @@ ALTER TABLE ONLY public.issue
 -- Name: receipt receipt_case_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.receipt
-    ADD CONSTRAINT receipt_case_id_fkey FOREIGN KEY (case_id) REFERENCES public."case"(id) ON DELETE CASCADE;
+-- removed: receipt FK to case
 
 
 --
